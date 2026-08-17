@@ -1,0 +1,14 @@
+datasets:
+  firms:
+    description: NASA Fire Information for Resource Management System
+    source: https://firms.modaps.eosdis.nasa.gov/
+    version: null
+    checksum: null
+    download_date: null
+
+  clcplus:
+    description: Copernicus Land Cover Plus Backbone
+    source: https://land.copernicus.eu/
+    version: 2023
+    checksum: null
+    download_date: null

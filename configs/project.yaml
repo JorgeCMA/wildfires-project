@@ -1,0 +1,18 @@
+data:
+  raw: data/raw
+  intermediate: data/intermediate
+  processed: data/processed
+
+firms:
+  source: NASA FIRMS
+  format: csv
+
+clcplus:
+  version: 2023
+  resolution: 10
+  format: geotiff
+
+paths:
+  notebooks: notebooks
+  scripts: scripts
+  configs: configs
