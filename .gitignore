@@ -12,6 +12,10 @@ build/
 .venv/
 venv/
 env/
+Lib/
+Scripts/
+share/
+pyvenv.cfg
 
 # IDE
 .vscode/
