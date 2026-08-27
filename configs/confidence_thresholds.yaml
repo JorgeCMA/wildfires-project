@@ -1,0 +1,29 @@
+# Confidence mapping rules for merging VIIRS and MODIS FIRMS data.
+#
+# MODIS provides numerical confidence (0-100).
+# VIIRS provides categorical confidence (l/n/h).
+#
+# When merging both sensors:
+#   - Original values are stored in confidence_og_num (MODIS) and confidence_og_cat (VIIRS)
+#   - Unified columns confidence_cat and confidence_num are computed
+#   - If one sensor lacks a value, it is derived from the other using these thresholds
+
+# Numerical ranges for converting VIIRS categorical to numerical.
+# Used when VIIRS needs a numerical equivalent.
+categorical_to_numerical:
+  l: 15    # low:       0-30  → 15
+  n: 50    # nominal:  30-70  → 50
+  h: 85    # high:     70-100 → 85
+
+# Default categorical label for converting MODIS numerical to categorical.
+# Used when MODIS needs a categorical equivalent.
+numerical_to_categorical:
+  low:
+    min: 0
+    max: 30
+  nominal:
+    min: 30
+    max: 70
+  high:
+    min: 70
+    max: 100

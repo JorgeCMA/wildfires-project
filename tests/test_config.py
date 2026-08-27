@@ -42,30 +42,29 @@ class TestLoadConfig:
     def test_load_config_data_paths(self):
         config = load_config()
         assert "raw" in config["data"]
-        assert "intermediate" in config["data"]
         assert "processed" in config["data"]
 
-    def test_load_config_clcplus_version(self):
+    def test_load_config_firms_sensors(self):
         config = load_config()
-        assert config["clcplus"]["version"] == 2023
+        sensors = config["firms"]["sensors"]
+        assert "modis" in sensors
+        assert "viirs_snpp" in sensors
+        assert "viirs_noaa20" in sensors
 
 
 class TestDirectoryStructure:
     @pytest.mark.parametrize("path", [
         "data/raw/firms",
-        "data/raw/clcplus/2023/tile_01",
-        "data/raw/clcplus/2023/tile_02",
-        "data/intermediate/firms",
-        "data/intermediate/clcplus",
-        "data/processed/fires",
-        "data/processed/datasets",
+        "data/raw/clcplus",
+        "data/processed/merged",
+        "data/processed/enriched",
+        "data/processed/predictions",
         "notebooks",
         "src/wildfire",
         "src/wildfire/data",
         "src/wildfire/geo",
         "src/wildfire/enrichment",
         "src/wildfire/processing",
-        "src/wildfire/analysis",
         "scripts",
         "tests",
         "configs",
@@ -75,19 +74,6 @@ class TestDirectoryStructure:
         full_path = PROJECT_ROOT / path
         assert full_path.exists(), f"Directory not found: {path}"
         assert full_path.is_dir(), f"Not a directory: {path}"
-
-    @pytest.mark.parametrize("path", [
-        "data/raw/firms/.gitkeep",
-        "data/raw/clcplus/2023/tile_01/.gitkeep",
-        "data/raw/clcplus/2023/tile_02/.gitkeep",
-        "data/intermediate/firms/.gitkeep",
-        "data/intermediate/clcplus/.gitkeep",
-        "data/processed/fires/.gitkeep",
-        "data/processed/datasets/.gitkeep",
-    ])
-    def test_gitkeep_exists(self, path):
-        full_path = PROJECT_ROOT / path
-        assert full_path.exists(), f".gitkeep not found: {path}"
 
 
 class TestModuleImports:
@@ -114,10 +100,6 @@ class TestModuleImports:
     def test_import_processing(self):
         import wildfire.processing
         assert wildfire.processing is not None
-
-    def test_import_analysis(self):
-        import wildfire.analysis
-        assert wildfire.analysis is not None
 
 
 class TestVersioningCatalog:

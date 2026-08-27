@@ -1,0 +1,146 @@
+<PAMDataset>
+  <PAMRasterBand band="1">
+    <Histograms>
+      <HistItem>
+        <HistMin>-0.5</HistMin>
+        <HistMax>255.5</HistMax>
+        <BucketCount>256</BucketCount>
+        <IncludeOutOfRange>0</IncludeOutOfRange>
+        <Approximate>0</Approximate>
+        <HistCounts>0|2087395|19128491|570816|9361271|22638896|20917275|1931863|0|2749793|122388|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|280247|20211565|0</HistCounts>
+      </HistItem>
+    </Histograms>
+    <GDALRasterAttributeTable tableType="thematic">
+      <FieldDefn index="0">
+        <Name>value</Name>
+        <Type>0</Type>
+        <Usage>2</Usage>
+      </FieldDefn>
+      <FieldDefn index="1">
+        <Name>count</Name>
+        <Type>1</Type>
+        <Usage>1</Usage>
+      </FieldDefn>
+      <FieldDefn index="2">
+        <Name>Class_name</Name>
+        <Type>2</Type>
+        <Usage>0</Usage>
+      </FieldDefn>
+      <FieldDefn index="3">
+        <Name>Area_km2</Name>
+        <Type>1</Type>
+        <Usage>0</Usage>
+      </FieldDefn>
+      <FieldDefn index="4">
+        <Name>Area_perc</Name>
+        <Type>1</Type>
+        <Usage>0</Usage>
+      </FieldDefn>
+      <Row index="0">
+        <F>1</F>
+        <F>2087395</F>
+        <F>Sealed</F>
+        <F>208.7395</F>
+        <F>2.087395</F>
+      </Row>
+      <Row index="1">
+        <F>2</F>
+        <F>19128491</F>
+        <F>Woody needle leaved trees</F>
+        <F>1912.8491</F>
+        <F>19.128491</F>
+      </Row>
+      <Row index="2">
+        <F>3</F>
+        <F>570816</F>
+        <F>Woody broadleaved deciduous trees</F>
+        <F>57.0816</F>
+        <F>0.570816</F>
+      </Row>
+      <Row index="3">
+        <F>4</F>
+        <F>9361271</F>
+        <F>Woody broadleaved evergreen trees</F>
+        <F>936.1271</F>
+        <F>9.361271</F>
+      </Row>
+      <Row index="4">
+        <F>5</F>
+        <F>22638896</F>
+        <F>Low-growing woody plants</F>
+        <F>2263.8896</F>
+        <F>22.638896</F>
+      </Row>
+      <Row index="5">
+        <F>6</F>
+        <F>20917275</F>
+        <F>Permanent herbaceous</F>
+        <F>2091.7275</F>
+        <F>20.917275</F>
+      </Row>
+      <Row index="6">
+        <F>7</F>
+        <F>1931863</F>
+        <F>Periodically herbaceous</F>
+        <F>193.1863</F>
+        <F>1.931863</F>
+      </Row>
+      <Row index="7">
+        <F>8</F>
+        <F>0</F>
+        <F>Lichens and mosses</F>
+        <F>0</F>
+        <F>0</F>
+      </Row>
+      <Row index="8">
+        <F>9</F>
+        <F>2749793</F>
+        <F>Non and sparsely vegetated</F>
+        <F>274.9793</F>
+        <F>2.749793</F>
+      </Row>
+      <Row index="9">
+        <F>10</F>
+        <F>122388</F>
+        <F>Water</F>
+        <F>12.2388</F>
+        <F>0.122388</F>
+      </Row>
+      <Row index="10">
+        <F>11</F>
+        <F>0</F>
+        <F>Snow and ice</F>
+        <F>0</F>
+        <F>0</F>
+      </Row>
+      <Row index="11">
+        <F>253</F>
+        <F>280247</F>
+        <F>Coastal seawater buffer</F>
+        <F>28.0247</F>
+        <F>0.280247</F>
+      </Row>
+      <Row index="12">
+        <F>254</F>
+        <F>20211565</F>
+        <F>Outside area</F>
+        <F>2021.1565</F>
+        <F>20.211565</F>
+      </Row>
+      <Row index="13">
+        <F>255</F>
+        <F>0</F>
+        <F>No data</F>
+        <F>0</F>
+        <F>0</F>
+      </Row>
+    </GDALRasterAttributeTable>
+    <Metadata>
+      <MDI key="STATISTICS_MAXIMUM">254</MDI>
+      <MDI key="STATISTICS_MEAN">55.62335098</MDI>
+      <MDI key="STATISTICS_MINIMUM">1</MDI>
+      <MDI key="STATISTICS_STDDEV">100.71713295153</MDI>
+      <MDI key="STATISTICS_VALID_PERCENT">100</MDI>
+    </Metadata>
+  </PAMRasterBand>
+</PAMDataset>

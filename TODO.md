@@ -1,122 +1,173 @@
-# TODO — Wildfire Project Structure
-
-## Pending items
-
-### 1. Clarify scripts vs modules boundary [HIGH]
-
-Scripts in `scripts/` should only call functions from `src/wildfire/`, not contain
-implementation logic. Define a clear rule: if a script grows beyond ~50 lines of logic,
-the logic belongs in a module.
-
-**Action:** Add a note in `project_structure.md` under principle 6 with concrete
-examples of what goes in `scripts/` vs `src/`.
+# TODO — Wildfire Project
 
 ---
 
-### 2. Define `__init__.py` exports [MEDIUM]
+## [ENG] Completed
 
-All `__init__.py` files are created but empty. For each subpackage, define `__all__`
-listing the public names to improve discoverability and prevent internal modules from
-being imported accidentally.
+- [x] Restructure data directories with country/year hierarchy
+- [x] Create `configs/confidence_thresholds.yaml` for MODIS↔VIIRS mapping
+- [x] Implement `data/firms.py` — FIRMS CSV loading
+- [x] Implement `data/clc.py` — CLCPlus GeoTIFF loading
+- [x] Implement `data/openmeteo.py` — Open-Meteo API client
+- [x] Implement `processing/confidence.py` — confidence mapping logic
+- [x] Implement `processing/validation.py` — data quality checks
+- [x] Implement `enrichment/merge_sensors.py` — VIIRS+MODIS merge
+- [x] Implement `geo/tiles.py` — programmatic tile selection
+- [x] Implement `enrichment/clc_enrichment.py` — land cover enrichment
+- [x] Implement `enrichment/weather_enrichment.py` — weather enrichment
+- [x] Create CLI scripts in `scripts/`
+- [x] Create placeholder notebooks (00–04)
+- [x] Update `__init__.py` files with exports
+- [x] Update `pyproject.toml` with `requests` dependency
+- [x] Update `README.md`
 
-**Status:** Files created, content to-be-defined.
+## [ESP] Completado
 
-**Action:** For each subpackage, define `__all__` listing the public names.
-
----
-
-### 3. Define `data/clc.py` purpose [MEDIUM]
-
-`data/clc.py` exists as a placeholder. Its role needs to be defined — likely a data
-loader for CLCPlus Backbone tiles, separate from the enrichment logic.
-
-**Status:** Placeholder created, purpose to-be-defined.
-
-**Options:**
-- Data loader for CLCPlus tiles (recommended)
-- Generic loader merged into `data/loaders.py`
-- Remove and consolidate into `enrichment/clc_enrichment.py`
-
----
-
-### 4. Clarify `enrichment/clc_enrichment.py` scope [MEDIUM]
-
-This module enriches wildfire files with additional information from CLCPlus Backbone
-datasets. It should accept FIRMS data and return enriched data with CLC attributes.
-
-**Status:** Placeholder created, implementation pending.
-
-**Expected interface:**
-```python
-def enrich_with_clc(fires: pd.DataFrame, clc_path: Path) -> pd.DataFrame:
-    """Add CLC land cover attributes to FIRMS fire records."""
-```
-
----
-
-### 5. Add `tests/__init__.py` [LOW]
-
-Not required for pytest in a notebook-driven project, but may be needed if the project
-switches to `unittest` or if tooling requires it.
-
-**Action:** Add when tests are actually written, not before.
+- [x] Restructurar directorios de datos con jerarquía país/año
+- [x] Crear `configs/confidence_thresholds.yaml` para mapeo MODIS↔VIIRS
+- [x] Implementar `data/firms.py` — carga de CSVs FIRMS
+- [x] Implementar `data/clc.py` — carga de GeoTIFF CLCPlus
+- [x] Implementar `data/openmeteo.py` — cliente API Open-Meteo
+- [x] Implementar `processing/confidence.py` — lógica de mapeo de confianza
+- [x] Implementar `processing/validation.py` — verificación de calidad
+- [x] Implementar `enrichment/merge_sensors.py` — fusión VIIRS+MODIS
+- [x] Implementar `geo/tiles.py` — selección programática de tiles
+- [x] Implementar `enrichment/clc_enrichment.py` — enriquecimiento de cobertura del suelo
+- [x] Implementar `enrichment/weather_enrichment.py` — enriquecimiento climático
+- [x] Crear scripts CLI en `scripts/`
+- [x] Crear notebooks placeholder (00–04)
+- [x] Actualizar archivos `__init__.py` con exports
+- [x] Actualizar `pyproject.toml` con dependencia `requests`
+- [x] Actualizar `README.md`
 
 ---
 
-### 6. Mirror test directory structure [LOW]
+## [ENG] Pending
 
-When test files exceed ~5-6, the `tests/` directory should mirror `src/wildfire/`:
+### 1. Implement tests [IN PROGRESS]
 
-```text
-tests/
-   ├── __init__.py
-   ├── data/
-   │   ├── test_firms.py
-   │   └── test_clc.py
-   ├── enrichment/
-   │   └── test_clc_enrichment.py
-   └── geo/
-       └── test_tiles.py
-```
+- [x] `tests/test_config.py` — config loading, directory structure, module imports
+- [x] `tests/test_firms.py` — FIRMS loading, sensor mapping, folder structure
+- [ ] `tests/test_confidence.py` — confidence mapping edge cases
+- [ ] `tests/test_clc.py` — tile loading, pixel reading
+- [ ] `tests/test_enrichment.py` — merge, CLC enrichment, weather enrichment
 
-**Action:** Restructure when test count warrants it.
+### 2. Download and place raw data [DONE]
 
----
+- [x] FIRMS CSVs placed in `data/raw/firms/Spain/{2023,2024}/`
+- [x] CLCPlus tiles placed in `data/raw/clcplus/Spain/2023-2025/`
 
-### 7. Implement data versioning [HIGH]
+### 3. Fix known bugs [DONE]
 
-The `versioning/` folder and `catalog.yaml` are created with FIRMS + CLCPlus entries.
-Checksums and download dates need to be populated after first data download.
+- [x] `load_firms()` — moved sensor validation before file existence check
+- [x] `list_available_firms()` — use relative path from year dir for sensor key lookup
+- [ ] `build_dataset.py` references `config["output"]["processed"]` which doesn't exist in `project.yaml`
 
-**Status:** Basic YAML catalog created.
+### 4. Populate `versioning/catalog.yaml` [MEDIUM]
 
-**Next steps:**
-- Populate checksums after downloading data
-- Evaluate DVC if datasets grow
+After first data download, add checksums and download dates.
 
----
+### 4. Remove old directories if present [LOW]
 
-### 8. Define `py.typed` usage [LOW]
+Verify no stale `.gitkeep` or old directories remain in `data/`.
 
-The `py.typed` marker is added. Ensure type checking is configured:
-- Add `mypy` or `pyright` to dev dependencies in `pyproject.toml`
-- Define strictness level
+### 5. Define prediction target [MEDIUM]
 
-**Action:** Add type checker config when the codebase has enough types to validate.
+TBD — the model task (binary classification, risk scoring, etc.) will be
+determined after exploring the enriched dataset.
 
----
+### 6. Explore extended weather indices [LOW]
 
-### 9. Evaluate CLI entry points [MEDIUM]
+Reminder to investigate VPD, drought index, and fire weather index in
+`03_analysis.ipynb`.
 
-No structural changes needed. When the time comes, add `[project.scripts]` to
-`pyproject.toml`:
+### 7. Git branching strategy [MEDIUM]
+
+With 4–6 contributors, establish:
+
+- Feature branch naming convention (`feature/xxx`, `fix/xxx`)
+- Code review process (PRs to `main`)
+- Module ownership per person
+
+### 8. Clean up obsolete files [DONE]
+
+- [x] Remove stray executables from `scripts/` (venv artifacts)
+- [x] Added `scripts/*.exe` to `.gitignore`
+
+### 9. Evaluate CLI entry points [LOW]
+
+When scripts mature, expose as CLI commands via `pyproject.toml`:
 
 ```toml
 [project.scripts]
-wildfire-prepare = "wildfire.cli:prepare_firms"
-wildfire-enrich = "wildfire.cli:enrich_with_clc"
+wildfire-merge = "wildfire.cli:merge_firms"
+wildfire-enrich-clc = "wildfire.cli:enrich_with_clc"
+wildfire-enrich-weather = "wildfire.cli:enrich_with_weather"
+wildfire-build = "wildfire.cli:build_dataset"
 ```
 
-This reuses existing `src/wildfire/` functions. No new directories required.
+---
 
-**Action:** Implement when scripts are mature enough to expose as CLI commands.
+## [ESP] Pendiente
+
+### 1. Implementar tests [EN PROCESO]
+
+- [x] `tests/test_config.py` — carga de configuración, estructura de directorios, imports
+- [x] `tests/test_firms.py` — carga FIRMS, mapeo de sensores, estructura de carpetas
+- [ ] `tests/test_confidence.py` — casos extremos de mapeo de confianza
+- [ ] `tests/test_clc.py` — carga de tiles, lectura de píxeles
+- [ ] `tests/test_enrichment.py` — fusión, enriquecimiento CLC, enriquecimiento climático
+
+### 2. Descargar y colocar datos crudos [HECHO]
+
+- [x] CSVs FIRMS colocados en `data/raw/firms/Spain/{2023,2024}/`
+- [x] Tiles CLCPlus colocados en `data/raw/clcplus/Spain/2023-2025/`
+
+### 3. Corregir bugs conocidos [HECHO]
+
+- [x] `load_firms()` — validación del sensor movida antes de la verificación del archivo
+- [x] `list_available_firms()` — usar ruta relativa desde directorio de año para buscar sensor
+- [ ] `build_dataset.py` referencia `config["output"]["processed"]` que no existe en `project.yaml`
+
+### 4. Poblar `versioning/catalog.yaml` [MEDIO]
+
+Después de la primera descarga de datos, añadir checksums y fechas de descarga.
+
+### 5. Eliminar directorios antiguos si existen [BAJO]
+
+Verificar que no queden `.gitkeep` obsoletos o directorios antiguos en `data/`.
+
+### 5. Definir el objetivo de predicción [MEDIO]
+
+Por definir — la tarea del modelo (clasificación binaria, puntuación de riesgo, etc.)
+se determinará después de explorar el dataset enriquecido.
+
+### 6. Explorar índices climáticos extendidos [BAJO]
+
+Recordatorio para investigar VPD, índice de sequía e índice de clima para incendios
+en `03_analysis.ipynb`.
+
+### 7. Estrategia de branching en Git [MEDIO]
+
+Con 4–6 contribuyentes, establecer:
+
+- Convención de nombres de branches (`feature/xxx`, `fix/xxx`)
+- Proceso de revisión de código (PRs a `main`)
+- Responsabilidad de módulo por persona
+
+### 8. Limpiar archivos obsoletos [HECHO]
+
+- [x] Eliminar ejecutables sueltos de `scripts/` (artefactos de venv)
+- [x] Añadir `scripts/*.exe` a `.gitignore`
+
+### 9. Evaluar entry points CLI [BAJO]
+
+Cuando los scripts maduren, exponer como comandos CLI vía `pyproject.toml`:
+
+```toml
+[project.scripts]
+wildfire-merge = "wildfire.cli:merge_firms"
+wildfire-enrich-clc = "wildfire.cli:enrich_with_clc"
+wildfire-enrich-weather = "wildfire.cli:enrich_with_weather"
+wildfire-build = "wildfire.cli:build_dataset"
+```

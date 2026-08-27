@@ -1,18 +1,50 @@
 data:
   raw: data/raw
-  intermediate: data/intermediate
   processed: data/processed
 
 firms:
   source: NASA FIRMS
   format: csv
+  countries:
+    - Spain
+  years:
+    - 2023
+    - 2024
+  sensors:
+    - modis
+    - viirs_snpp
+    - viirs_noaa20
+  sensor_folders:
+    modis: "MODIS"
+    viirs_snpp: "VIIRS/VIIRS S-NPP"
+    viirs_noaa20: "VIIRS/VIIRS NOAA-20"
 
 clcplus:
-  version: 2023
-  resolution: 10
+  source: Copernicus Land Cover
   format: geotiff
+  resolution: 10
+  validity_period: "2023-2025"
+  countries:
+    - Spain
+
+openmeteo:
+  source: Open-Meteo
+  base_url: "https://archive-api.open-meteo.com/v1/archive"
+  hourly_variables:
+    - temperature_2m
+    - relative_humidity_2m
+    - wind_speed_10m
+    - wind_direction_10m
+    - precipitation
+    - shortwave_radiation
+
+output:
+  merged: data/processed/merged
+  enriched: data/processed/enriched
+  predictions: data/processed/predictions
 
 paths:
   notebooks: notebooks
   scripts: scripts
   configs: configs
+  confidence_thresholds: configs/confidence_thresholds.yaml
