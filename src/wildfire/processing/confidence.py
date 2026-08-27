@@ -129,36 +129,3 @@ def add_unified_confidence(df: pd.DataFrame) -> pd.DataFrame:
     df["confidence_num"] = pd.to_numeric(df["confidence_num"], errors="coerce")
 
     return df
-
-
-def load_all_firms_mapped(
-    country: str = "Spain",
-    years: list[int] | None = None,
-    sensors: list[str] | None = None,
-) -> pd.DataFrame:
-    """Load all FIRMS CSVs and apply unified confidence mapping in one step.
-
-    Combines ``load_all_firms()`` and ``add_unified_confidence()`` so that
-    the returned DataFrame has the unified confidence columns ready to use.
-
-    MODIS numerical (0-100) is mapped to categorical (L/N/H).
-    VIIRS categorical (l/n/h) is mapped to numerical (15/50/85).
-
-    Parameters
-    ----------
-    country:
-        Country name.
-    years:
-        List of years. Defaults to configured years.
-    sensors:
-        List of sensors. Defaults to all configured sensors.
-
-    Returns
-    -------
-    pd.DataFrame
-        Concatenated FIRMS data with unified confidence columns.
-    """
-    df = load_all_firms(country=country, years=years, sensors=sensors)
-    if df.empty:
-        return df
-    return add_unified_confidence(df)
