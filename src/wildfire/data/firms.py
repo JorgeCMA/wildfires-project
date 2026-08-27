@@ -58,9 +58,10 @@ SENSOR_FOLDER_NAMES = {
 
 def _firms_dir(country: str, year: int, sensor: str) -> Path:
     """Build the directory path for a FIRMS sensor/year/country."""
+    from wildfire.config import PROJECT_ROOT
     config = load_config()
     sensor_path = SENSOR_FOLDER_NAMES.get(sensor.lower(), sensor)
-    return Path(config["data"]["raw"]) / "firms" / country / str(year) / sensor_path
+    return PROJECT_ROOT / config["data"]["raw"] / "firms" / country / str(year) / sensor_path
 
 
 def _find_csv_in_dir(directory: Path) -> Path | None:

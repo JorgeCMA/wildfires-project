@@ -13,8 +13,9 @@ from wildfire.data.firms import load_all_firms
 
 def _load_thresholds() -> dict:
     """Load the confidence thresholds YAML file."""
+    from wildfire.config import PROJECT_ROOT
     config = load_config()
-    path = Path(config["paths"]["confidence_thresholds"])
+    path = PROJECT_ROOT / config["paths"]["confidence_thresholds"]
     with open(path) as f:
         return yaml.safe_load(f)
 

@@ -24,6 +24,7 @@ dev = [
     "pytest",
     "mypy",
     "ruff",
+    "ipykernel",
 ]
 
 [tool.setuptools.packages.find]

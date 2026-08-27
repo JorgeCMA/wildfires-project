@@ -13,8 +13,9 @@ from wildfire.config import load_config
 
 def _clc_root(country: str = "Spain") -> Path:
     """Return the root directory for CLCPlus tiles of a country."""
+    from wildfire.config import PROJECT_ROOT
     config = load_config()
-    return Path(config["data"]["raw"]) / "clcplus" / country
+    return PROJECT_ROOT / config["data"]["raw"] / "clcplus" / country
 
 
 def list_clc_tiles(country: str = "Spain", validity: str = "2023-2025") -> list[Path]:
@@ -35,7 +36,7 @@ def list_clc_tiles(country: str = "Spain", validity: str = "2023-2025") -> list[
     tile_dir = _clc_root(country) / validity
     if not tile_dir.exists():
         return []
-    return sorted(tile_dir.glob("*.tif"))
+    return sorted(tile_dir.glob("**/*.tif"))
 
 
 def load_clc_tile(
