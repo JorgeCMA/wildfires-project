@@ -113,7 +113,7 @@ def load_firms(
         raise FileNotFoundError(f"No FIRMS CSV found in {directory}")
 
     df = pd.read_csv(csv_path)
-
+    print(csv_path)
     df["sensor"] = sensor
     df["country"] = country
     df["year"] = year
