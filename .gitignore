@@ -36,7 +36,6 @@ Thumbs.db
 data/raw/clcplus/**/Orignal_Data_*.zip
 
 # Data — processed outputs
-data/processed/*/
 !data/processed/*/.gitkeep
 
 # Environment
