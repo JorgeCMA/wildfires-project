@@ -31,9 +31,6 @@ pyvenv.cfg
 .DS_Store
 Thumbs.db
 
-# Data — FIRMS raw CSVs are large and placed manually, not tracked
-data/raw/firms/
-
 # Data — CLCPlus tiles ARE tracked (real project data)
 # Only ignore the original download zip (too large for git)
 data/raw/clcplus/**/Orignal_Data_*.zip
