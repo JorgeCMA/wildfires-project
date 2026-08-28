@@ -1,12 +1,15 @@
-"""Quick look at all FIRMS CSVs with unified confidence mapping."""
+"""Quick look at all FIRMS CSVs with unified confidence mapping + CLC enrichment."""
 
-import rasterio
-from pyproj import Transformer
-from rasterio.windows import Window
+from pathlib import Path
 
-from wildfire.data.clc import list_clc_tiles
+import pandas as pd
+
 from wildfire.data.firms import load_all_firms
+from wildfire.enrichment.clc_enrichment import load_clc_classes, enrich_with_clc
 from wildfire.processing.confidence import add_unified_confidence
+
+OUT_DIR = Path("data/processed")
+OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # --- FIRMS ---
 combined = add_unified_confidence(load_all_firms(country="Spain", years=[2023, 2024]))
@@ -16,37 +19,22 @@ print(f"Years: {sorted(combined['year'].unique())}")
 print(f"Sensors: {combined['sensor'].unique().tolist()}")
 print(f"\nConfidence distribution:")
 print(combined["confidence_cat"].value_counts().to_string())
-print()
-cols = ["latitude", "longitude", "acq_date", "sensor", "satellite", "frp",
-        "confidence_og_cat", "confidence_og_num", "confidence_cat", "confidence_num"]
-print(combined[cols].head(10).to_string())
 
-# --- CLCPlus lookup for first row ---
-row = combined.iloc[0]
-lat, lon = row["latitude"], row["longitude"]
+# --- CLC enrichment ---
+print(f"\nRunning CLC enrichment...")
+enriched = enrich_with_clc(combined)
 
-# Convert to EPSG:3035
-t = Transformer.from_crs("EPSG:4326", "EPSG:3035", always_xy=True)
-x, y = t.transform(lon, lat)
+cols = ["latitude", "longitude", "acq_date", "sensor", "clc_class", "clc_name"]
+print(enriched[cols].head(10).to_string())
 
-# Find the tile: divide by 100000 and floor
-e3035, n3035 = int(x // 100000), int(y // 100000)
-tile_name = f"E{e3035}N{n3035}"
-print(f"\n--- CLCPlus lookup for first row ---")
-print(f"lat={lat}, lon={lon}")
-print(f"EPSG:3035: E={x:.2f}, N={y:.2f}")
-print(f"Tile: {tile_name}")
+# --- Save FIRMS + CLC dataset ---
+firms_path = OUT_DIR / "firms_clc.csv"
+enriched.to_csv(firms_path, index=False)
+print(f"\nSaved FIRMS+CLC dataset: {firms_path} ({len(enriched):,} rows)")
 
-tiles = list_clc_tiles()
-matches = [t for t in tiles if tile_name in t.name]
-if not matches:
-    print(f"No tile found for {tile_name}")
-else:
-    tile_path = matches[0]
-    with rasterio.open(tile_path) as src:
-        row_px, col_px = ~src.transform * (x, y)
-        r, c = int(row_px), int(col_px)
-        val = src.read(1, window=Window(c, r, 1, 1))[0, 0]
-        print(f"Tile file: {tile_path.name}")
-        print(f"Pixel: row={r}, col={c}")
-        print(f"CLC value: {val}")
+# --- Save CLC terrain reference table ---
+clc_terrain = load_clc_classes()
+terrain_path = OUT_DIR / "clc_terrain.csv"
+clc_terrain.to_csv(terrain_path, index=False)
+print(f"Saved CLC terrain table: {terrain_path} ({len(clc_terrain)} classes)")
+print(clc_terrain[["clc_code", "clc_name"]].to_string(index=False))

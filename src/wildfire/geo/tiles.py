@@ -4,19 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import rasterio
-from rasterio.crs import CRS
+from pyproj import Transformer
+from rasterio.transform import rowcol as rio_rowcol
 from shapely.geometry import Point, box
 
 from wildfire.data.clc import list_clc_tiles
 
-
-def _tile_bounds(tile_path: Path) -> tuple[float, float, float, float]:
-    """Return (min_lon, min_lat, max_lon, max_lat) for a GeoTIFF tile."""
-    with rasterio.open(tile_path) as src:
-        bounds = src.bounds
-    return (bounds.left, bounds.bottom, bounds.right, bounds.top)
+# Shared transformer: WGS84 (EPSG:4326) → ETRS89-LAEA (EPSG:3035)
+_TRANSFORMER_TO_3035 = Transformer.from_crs("EPSG:4326", "EPSG:3035", always_xy=True)
 
 
 def find_tile_for_point(
@@ -43,14 +39,15 @@ def find_tile_for_point(
     Path | None
         Path to the matching tile, or ``None`` if no tile contains the point.
     """
-    point = Point(longitude, latitude)
+    x, y = _TRANSFORMER_TO_3035.transform(longitude, latitude)
+    point = Point(x, y)
     tiles = list_clc_tiles(country=country, validity=validity)
 
     for tile in tiles:
-        min_lon, min_lat, max_lon, max_lat = _tile_bounds(tile)
-        tile_box = box(min_lon, min_lat, max_lon, max_lat)
-        if tile_box.contains(point):
-            return tile
+        with rasterio.open(tile) as src:
+            tile_box = box(*src.bounds)
+            if tile_box.contains(point):
+                return tile
 
     return None
 
@@ -81,14 +78,16 @@ def latlon_to_pixel(
     ValueError
         If the coordinates fall outside the tile bounds.
     """
-    with rasterio.open(tile_path) as src:
-        transform = src.transform
-        row, col = transform.rowcol(longitude, latitude)
+    x, y = _TRANSFORMER_TO_3035.transform(longitude, latitude)
 
-    if row < 0 or col < 0:
+    with rasterio.open(tile_path) as src:
+        row, col = rio_rowcol(src.transform, x, y)
+
+    if row < 0 or row >= src.height or col < 0 or col >= src.width:
         raise ValueError(
-            f"Coordinates ({latitude}, {longitude}) map to negative pixel indices "
-            f"in tile {tile_path.name}"
+            f"Coordinates ({latitude}, {longitude}) map to pixel "
+            f"({row}, {col}) outside tile {tile_path.name} "
+            f"(size {src.height}x{src.width})"
         )
 
     return int(row), int(col)

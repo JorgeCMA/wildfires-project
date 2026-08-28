@@ -1,0 +1,15 @@
+clc_code,clc_name,pixel_count,area_km2,area_perc
+1,Sealed,40156,4.0156,0.040156
+2,Woody needle leaved trees,309081,30.9081,0.309081
+3,Woody broadleaved deciduous trees,1341,0.1341,0.001341
+4,Woody broadleaved evergreen trees,142887,14.2887,0.142887
+5,Low-growing woody plants,668381,66.8381,0.668381
+6,Permanent herbaceous,660999,66.0999,0.660999
+7,Periodically herbaceous,150949,15.0949,0.150949
+8,Lichens and mosses,0,0.0,0.0
+9,Non and sparsely vegetated,698263,69.8263,0.698263
+10,Water,573,0.0573,0.000573
+11,Snow and ice,0,0.0,0.0
+253,Coastal seawater buffer,282033,28.2033,0.282033
+254,Outside area,97045337,9704.5337,97.045337
+255,No data,0,0.0,0.0
