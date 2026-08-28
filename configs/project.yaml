@@ -42,6 +42,7 @@ output:
   merged: data/processed/merged
   enriched: data/processed/enriched
   predictions: data/processed/predictions
+  processed: data/processed
 
 paths:
   notebooks: notebooks

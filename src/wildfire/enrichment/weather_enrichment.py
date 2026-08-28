@@ -69,8 +69,6 @@ def enrich_with_weather(
         hour_str = f"{date_str}T{acq_time[:2]}:00"
 
         record: dict = {}
-        for var in hourly.get("time", []):
-            pass
 
         for key, values in hourly.items():
             if key == "time":

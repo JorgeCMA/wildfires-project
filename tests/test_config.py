@@ -62,7 +62,6 @@ class TestDirectoryStructure:
         "notebooks",
         "src/wildfire",
         "src/wildfire/data",
-        "src/wildfire/geo",
         "src/wildfire/enrichment",
         "src/wildfire/processing",
         "scripts",
@@ -88,10 +87,6 @@ class TestModuleImports:
     def test_import_data(self):
         import wildfire.data
         assert wildfire.data is not None
-
-    def test_import_geo(self):
-        import wildfire.geo
-        assert wildfire.geo is not None
 
     def test_import_enrichment(self):
         import wildfire.enrichment

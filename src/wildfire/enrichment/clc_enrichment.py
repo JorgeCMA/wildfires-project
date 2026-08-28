@@ -81,21 +81,6 @@ CLC_LABELS: dict[int, str] = {
     255: "No data",
 }
 
-# Neighbor offsets: (row_offset, col_offset) for T, TR, R, BR, B, BL, L, TL
-_NEIGHBOR_OFFSETS = {
-    "clc_T":  (-1,  0),
-    "clc_TR": (-1,  1),
-    "clc_R":  ( 0,  1),
-    "clc_BR": ( 1,  1),
-    "clc_B":  ( 1,  0),
-    "clc_BL": ( 1, -1),
-    "clc_L":  ( 0, -1),
-    "clc_TL": (-1, -1),
-}
-
-CLC_NEIGHBOR_COLS = ["clc_C"] + list(_NEIGHBOR_OFFSETS.keys())
-
-
 def _build_tile_index(
     country: str = "Spain",
     validity: str = "2023-2025",
@@ -130,14 +115,6 @@ def _pixel_value(
     if src.nodata is not None and val == src.nodata:
         return None
     return int(val) if val == int(val) else float(val)
-
-
-def _extract_tile_key(stem: str) -> str | None:
-    """Extract the tile key (e.g. 'E31N23') from a GeoTIFF filename stem."""
-    for part in stem.split("_"):
-        if part.startswith("E") and "N" in part:
-            return part
-    return None
 
 
 def enrich_with_clc(
