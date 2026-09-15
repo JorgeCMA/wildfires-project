@@ -26,6 +26,9 @@ clcplus:
   validity_period: "2023-2025"
   countries:
     - Spain
+  neighborhood:
+    enabled: true
+    rings: [1, 2]
 
 openmeteo:
   source: Open-Meteo

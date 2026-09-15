@@ -44,6 +44,27 @@
 
 ## [ENG] Pending
 
+### 0. Enrichment pipeline [CURRENT DEVELOPMENT]
+
+- [ ] **CLCPlus Backbone enrichment** — enrich FIRMS data with land cover classes using CLCPlus tiles
+- [ ] **Open METEO enrichment** — enrich with weather data (after CLCPlus is stable)
+
+### 0.1 CLCPlus enrichment — known issues [IN PROGRESS]
+
+- [x] **NaN nodata crash** (`clc_enrichment.py`) — if `src.nodata` is `NaN`, the `val == src.nodata` check always fails (IEEE 754), and `int(val)` on NaN raises `ValueError`. Added `np.isnan(val)` guard in `_pixel_value`.
+- [ ] **`None == None` in `clc_uniform_surroundings`** (`clc_enrichment.py`) — missing-data pixels compare as equal, marking them "uniform". Add `df["clc_class"].notna()` check to the boolean expression.
+- [ ] **Off-by-one wrapping in `_resolve_neighbor` for ring 3** (`clc_enrichment.py`) — hardcodes `9999`/`0` which is wrong for ±2 offsets. Use modular arithmetic: `new_row % 10000`. Latent bug (ring 3 not enabled).
+- [ ] **Hardcoded column names in `clc_uniform_surroundings`** (`clc_enrichment.py`) — dynamic suffixes are computed but the comparison hardcodes `N`, `S`, `W`, `E`. Should use the dynamic list.
+- [ ] **Hardcoded tile dimension `10000`** (`clc_enrichment.py`) vs dynamic `reader.height/width` elsewhere. Extract to a named constant or pass as parameter.
+- [x] **Dead import** (`clc_enrichment.py`) — `import numpy as np` was unused. Now used for `np.isnan` guard.
+- [ ] **Dead function** (`clc_enrichment.py`) — `load_clc_classes()` is never called anywhere. Either use it or prefix with `_`.
+- [x] **Wrong return type annotation** (`clc_enrichment.py`) — `_pixel_value` now correctly returns `-> int | None` (was returning `float` for non-integer values).
+- [x] **Docstring inconsistency** (`clc_enrichment.py`) — updated to reflect that only `clc_class` columns are added (removed `clc_name` columns from output).
+- [ ] **No `try/finally` for reader cleanup** (`clc_enrichment.py`) — file handles leak on exception. Wrap main loop in `try/finally`.
+- [ ] **Missing exports** (`enrichment/__init__.py`) — `NEIGHBORHOOD_RINGS`, `CLC_LABELS`, `load_clc_classes` are public but not in `__all__`. Either export or prefix with `_`.
+- [x] **Remove `clc_name` columns** — center pixel and neighbor name columns removed from `enrich_with_clc` output. Only `clc_class` (int) columns remain.
+- [ ] **No tests for CLC enrichment** — zero coverage for `_resolve_neighbor`, `NEIGHBORHOOD_RINGS`, `enrich_with_clc` output schema, `clc_uniform_surroundings`.
+
 ### 1. Implement tests [IN PROGRESS]
 
 - [x] `tests/test_config.py` — config loading, directory structure, module imports
@@ -109,6 +130,27 @@ wildfire-build = "wildfire.cli:build_dataset"
 ---
 
 ## [ESP] Pendiente
+
+### 0. Pipeline de enriquecimiento [DESARROLLO ACTUAL]
+
+- [ ] **Enriquecimiento CLCPlus Backbone** — enriquecer datos FIRMS con clases de cobertura del suelo usando tiles CLCPlus
+- [ ] **Enriquecimiento Open METeo** — enriquecer con datos climáticos (después de que CLCPlus sea estable)
+
+### 0.1 Enriquecimiento CLCPlus — problemas conocidos [EN PROCESO]
+
+- [x] **Crash por nodata NaN** (`clc_enrichment.py`) — si `src.nodata` es `NaN`, la comprobación `val == src.nodata` siempre falla (IEEE 754) y `int(val)` sobre NaN lanza `ValueError`. Añadida guardia `np.isnan(val)` en `_pixel_value`.
+- [ ] **`None == None` en `clc_uniform_surroundings`** (`clc_enrichment.py`) — píxeles sin datos se comparan como iguales, marcándolos como "uniformes". Añadir comprobación `df["clc_class"].notna()` a la expresión booleana.
+- [ ] **Off-by-one en wrapping de `_resolve_neighbor` para ring 3** (`clc_enrichment.py`) — hardcodea `9999`/`0` que es incorrecto para offsets ±2. Usar aritmética modular: `new_row % 10000`. Bug latente (ring 3 no habilitado).
+- [ ] **Nombres de columnas hardcodeados en `clc_uniform_surroundings`** (`clc_enrichment.py`) — los sufijos se calculan dinámicamente pero la comparación hardcodea `N`, `S`, `W`, `E`. Debería usar la lista dinámica.
+- [ ] **Dimensión de tile hardcodeada `10000`** (`clc_enrichment.py`) vs `reader.height/width` dinámico en otro lado. Extraer a constante nombrada o pasar como parámetro.
+- [x] **Import muerto** (`clc_enrichment.py`) — `import numpy as np` no se usaba. Ahora se usa para la guardia `np.isnan`.
+- [ ] **Función muerta** (`clc_enrichment.py`) — `load_clc_classes()` nunca se llama. Usar o prefijar con `_`.
+- [x] **Anotación de tipo incorrecta** (`clc_enrichment.py`) — `_pixel_value` ahora devuelve correctamente `-> int | None` (antes devolvía `float` para valores no enteros).
+- [x] **Inconsistencia en docstring** (`clc_enrichment.py`) — actualizado para reflejar que solo se añaden columnas `clc_class` (eliminadas columnas `clc_name` del resultado).
+- [ ] **Sin `try/finally` para limpieza de readers** (`clc_enrichment.py`) — descriptors de archivo se pierden en excepción. Envolver bucle principal en `try/finally`.
+- [ ] **Exports missing** (`enrichment/__init__.py`) — `NEIGHBORHOOD_RINGS`, `CLC_LABELS`, `load_clc_classes` son públicos pero no están en `__all__`. Exportar o prefijar con `_`.
+- [x] **Eliminar columnas `clc_name`** — columnas de nombre del píxel central y vecinos eliminadas del resultado de `enrich_with_clc`. Solo permanecen las columnas `clc_class` (int).
+- [ ] **Sin tests para enriquecimiento CLC** — cero cobertura para `_resolve_neighbor`, `NEIGHBORHOOD_RINGS`, esquema de salida de `enrich_with_clc`, `clc_uniform_surroundings`.
 
 ### 1. Implementar tests [EN PROCESO]
 

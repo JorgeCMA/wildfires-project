@@ -81,6 +81,73 @@ CLC_LABELS: dict[int, str] = {
     255: "No data",
 }
 
+# Neighborhood ring definitions.
+# Each ring maps to a list of (row_offset, col_offset, column_suffix) tuples.
+# Ring 1: cardinal directions (distance 1)
+# Ring 2: diagonals (distance sqrt(2))
+# Ring 3: distance-2 cardinal directions
+NEIGHBORHOOD_RINGS: dict[int, list[tuple[int, int, str]]] = {
+    1: [
+        (-1,  0, "N"),
+        ( 1,  0, "S"),
+        ( 0, -1, "W"),
+        ( 0,  1, "E"),
+    ],
+    2: [
+        (-1, -1, "NW"),
+        (-1,  1, "NE"),
+        ( 1, -1, "SW"),
+        ( 1,  1, "SE"),
+    ],
+    3: [
+        (-2,  0, "N2"),
+        ( 2,  0, "S2"),
+        ( 0, -2, "W2"),
+        ( 0,  2, "E2"),
+    ],
+}
+
+
+def _resolve_neighbor(
+    tile_key: str,
+    row: int,
+    col: int,
+    dr: int,
+    dc: int,
+) -> tuple[str, int, int]:
+    """Compute the tile key and local (row, col) for a neighboring pixel.
+
+    Handles cross-tile boundaries by wrapping coordinates and adjusting
+    the tile key.  CLCPlus tiles are 10,000 × 10,000 pixels (0-indexed),
+    with row 0 at the northern edge and col 0 at the western edge.
+
+    Returns
+    -------
+    (new_tile_key, new_row, new_col)
+    """
+    new_row = row + dr
+    new_col = col + dc
+
+    e = int(tile_key[1:tile_key.index("N")])
+    n = int(tile_key[tile_key.index("N") + 1:])
+
+    if new_row < 0:
+        new_row = 9999
+        n += 1
+    elif new_row > 9999:
+        new_row = 0
+        n -= 1
+
+    if new_col < 0:
+        new_col = 9999
+        e -= 1
+    elif new_col > 9999:
+        new_col = 0
+        e += 1
+
+    return f"E{e}N{n}", new_row, new_col
+
+
 def _build_tile_index(
     country: str = "Spain",
     validity: str = "2023-2025",
@@ -106,15 +173,17 @@ def _pixel_value(
     tile_width: int,
     tile_height: int,
 ) -> int | None:
-    """Read a single pixel, returning None for out-of-bounds."""
+    """Read a single pixel, returning None for out-of-bounds or nodata."""
     if src is None:
         return None
     if row < 0 or row >= tile_height or col < 0 or col >= tile_width:
         return None
     val = src.read(1, window=rasterio.windows.Window(col, row, 1, 1))[0, 0]
+    if np.isnan(val):
+        return None
     if src.nodata is not None and val == src.nodata:
         return None
-    return int(val) if val == int(val) else float(val)
+    return int(val)
 
 
 def enrich_with_clc(
@@ -122,15 +191,17 @@ def enrich_with_clc(
     country: str = "Spain",
     validity: str = "2023-2025",
 ) -> pd.DataFrame:
-    """Add CLCPlus land cover class to each FIRMS row.
+    """Add CLCPlus land cover class and optional neighborhood data.
 
     For each fire detection the center pixel is read from the corresponding
-    CLCPlus tile.
+    CLCPlus tile.  If ``clcplus.neighborhood.enabled`` is ``true`` in the
+    project config, neighboring pixels are also read according to the
+    configured ``rings`` (see ``NEIGHBORHOOD_RINGS``).
 
     Added columns
     --------------
-    clc_class    Numeric CLCPlus code.
-    clc_name     Human-readable label.
+    clc_class               Numeric CLCPlus code (center pixel).
+    clc_class_{suffix}      Numeric CLCPlus code for each neighbor direction.
 
     Parameters
     ----------
@@ -144,9 +215,16 @@ def enrich_with_clc(
     Returns
     -------
     pd.DataFrame
-        DataFrame with the ``clc_class`` and ``clc_name`` columns.
+        DataFrame with center-pixel CLC columns and, if enabled, neighbor
+        CLC columns for each configured ring.
     """
     df = df.copy()
+
+    config = load_config()
+    clc_config = config.get("clcplus", {})
+    neighborhood = clc_config.get("neighborhood", {})
+    enabled = neighborhood.get("enabled", False)
+    rings = neighborhood.get("rings", []) if enabled else []
 
     transformer = Transformer.from_crs("EPSG:4326", "EPSG:3035", always_xy=True)
     tile_index = _build_tile_index(country=country, validity=validity)
@@ -154,8 +232,19 @@ def enrich_with_clc(
     xs, ys = transformer.transform(df["longitude"].values, df["latitude"].values)
     tile_keys = [f"E{int(x // 100000)}N{int(y // 100000)}" for x, y in zip(xs, ys)]
 
+    # Collect neighbor offsets for all enabled rings.
+    neighbor_offsets: list[tuple[int, int, str]] = []
+    for ring in rings:
+        if ring in NEIGHBORHOOD_RINGS:
+            neighbor_offsets.extend(NEIGHBORHOOD_RINGS[ring])
+
+    # Prepare storage for center pixel.
     clc_classes: list[int | None] = []
-    clc_names: list[str | None] = []
+
+    # Prepare storage for neighbor columns.
+    neigh_classes: dict[str, list[int | None]] = {
+        f"clc_class_{s}": [] for _, _, s in neighbor_offsets
+    }
 
     open_readers: dict[str, rasterio.DatasetReader | None] = {}
     tile_dims: dict[str, tuple[int, int]] = {}
@@ -176,7 +265,8 @@ def enrich_with_clc(
         reader = _get_reader(tk)
         if reader is None:
             clc_classes.append(None)
-            clc_names.append(None)
+            for key in neigh_classes:
+                neigh_classes[key].append(None)
             continue
 
         row, col = reader.index(x, y)
@@ -184,14 +274,37 @@ def enrich_with_clc(
         val = _pixel_value(reader, row, col, width, height)
 
         clc_classes.append(val)
-        clc_names.append(CLC_LABELS.get(val, f"Unknown ({val})") if val is not None else None)
+
+        # Read neighbor pixels.
+        for dr, dc, suffix in neighbor_offsets:
+            ntk, nr, nc = _resolve_neighbor(tk, row, col, dr, dc)
+            n_reader = _get_reader(ntk)
+            n_height, n_width = _get_dims(ntk)
+            n_val = _pixel_value(n_reader, nr, nc, n_width, n_height)
+            neigh_classes[f"clc_class_{suffix}"].append(n_val)
 
     for reader in open_readers.values():
         if reader is not None:
             reader.close()
 
     df["clc_class"] = clc_classes
-    df["clc_name"] = clc_names
+
+    for key in neigh_classes:
+        df[key] = neigh_classes[key]
+
+    # Boolean: true if all 4 cardinal neighbors match the center pixel.
+    cardinal_suffixes = [s for _, _, s in NEIGHBORHOOD_RINGS.get(1, [])]
+    cardinal_cols = [f"clc_class_{s}" for s in cardinal_suffixes]
+    if cardinal_cols and all(c in df.columns for c in cardinal_cols):
+        df["clc_uniform_surroundings"] = (
+            (df["clc_class"] == df["clc_class_N"])
+            & (df["clc_class"] == df["clc_class_S"])
+            & (df["clc_class"] == df["clc_class_W"])
+            & (df["clc_class"] == df["clc_class_E"])
+        )
+    else:
+        df["clc_uniform_surroundings"] = False
+
     return df
 
 
