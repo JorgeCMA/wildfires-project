@@ -114,6 +114,8 @@ def _resolve_neighbor(
     col: int,
     dr: int,
     dc: int,
+    tile_height: int = 10000,
+    tile_width: int = 10000,
 ) -> tuple[str, int, int]:
     """Compute the tile key and local (row, col) for a neighboring pixel.
 
@@ -121,29 +123,31 @@ def _resolve_neighbor(
     the tile key.  CLCPlus tiles are 10,000 × 10,000 pixels (0-indexed),
     with row 0 at the northern edge and col 0 at the western edge.
 
+    Uses modular arithmetic so the logic is correct for any tile size
+    and any ring offset (±1, ±2, etc.).
+
     Returns
     -------
     (new_tile_key, new_row, new_col)
     """
-    new_row = row + dr
-    new_col = col + dc
+    raw_row = row + dr
+    raw_col = col + dc
 
     e = int(tile_key[1:tile_key.index("N")])
     n = int(tile_key[tile_key.index("N") + 1:])
 
-    if new_row < 0:
-        new_row = 9999
-        n += 1
-    elif new_row > 9999:
-        new_row = 0
+    if raw_row < 0:
         n -= 1
+    elif raw_row >= tile_height:
+        n += 1
 
-    if new_col < 0:
-        new_col = 9999
+    if raw_col < 0:
         e -= 1
-    elif new_col > 9999:
-        new_col = 0
+    elif raw_col >= tile_width:
         e += 1
+
+    new_row = raw_row % tile_height
+    new_col = raw_col % tile_width
 
     return f"E{e}N{n}", new_row, new_col
 
@@ -277,7 +281,10 @@ def enrich_with_clc(
 
         # Read neighbor pixels.
         for dr, dc, suffix in neighbor_offsets:
-            ntk, nr, nc = _resolve_neighbor(tk, row, col, dr, dc)
+            ntk, nr, nc = _resolve_neighbor(
+                tk, row, col, dr, dc,
+                tile_height=height, tile_width=width,
+            )
             n_reader = _get_reader(ntk)
             n_height, n_width = _get_dims(ntk)
             n_val = _pixel_value(n_reader, nr, nc, n_width, n_height)
@@ -293,15 +300,15 @@ def enrich_with_clc(
         df[key] = neigh_classes[key]
 
     # Boolean: true if all 4 cardinal neighbors match the center pixel.
+    # Requires center pixel to be non-null (avoids None == None → True).
     cardinal_suffixes = [s for _, _, s in NEIGHBORHOOD_RINGS.get(1, [])]
     cardinal_cols = [f"clc_class_{s}" for s in cardinal_suffixes]
     if cardinal_cols and all(c in df.columns for c in cardinal_cols):
-        df["clc_uniform_surroundings"] = (
-            (df["clc_class"] == df["clc_class_N"])
-            & (df["clc_class"] == df["clc_class_S"])
-            & (df["clc_class"] == df["clc_class_W"])
-            & (df["clc_class"] == df["clc_class_E"])
-        )
+        center_valid = df["clc_class"].notna()
+        all_match = center_valid.copy()
+        for col_name in cardinal_cols:
+            all_match &= df[col_name].notna() & (df["clc_class"] == df[col_name])
+        df["clc_uniform_surroundings"] = all_match
     else:
         df["clc_uniform_surroundings"] = False
 
