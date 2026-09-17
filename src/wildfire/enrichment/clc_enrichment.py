@@ -14,7 +14,7 @@ from wildfire.config import load_config
 from wildfire.data.clc import list_clc_tiles
 
 
-def load_clc_classes(
+def _load_clc_classes(
     country: str = "Spain",
     validity: str = "2023-2025",
 ) -> pd.DataFrame:
@@ -114,8 +114,8 @@ def _resolve_neighbor(
     col: int,
     dr: int,
     dc: int,
-    tile_height: int = 10000,
-    tile_width: int = 10000,
+    tile_height: int,
+    tile_width: int,
 ) -> tuple[str, int, int]:
     """Compute the tile key and local (row, col) for a neighboring pixel.
 
@@ -265,34 +265,35 @@ def enrich_with_clc(
             tile_dims[tk] = (reader.height, reader.width) if reader else (0, 0)
         return tile_dims[tk]
 
-    for idx, (x, y, tk) in enumerate(zip(xs, ys, tile_keys)):
-        reader = _get_reader(tk)
-        if reader is None:
-            clc_classes.append(None)
-            for key in neigh_classes:
-                neigh_classes[key].append(None)
-            continue
+    try:
+        for idx, (x, y, tk) in enumerate(zip(xs, ys, tile_keys)):
+            reader = _get_reader(tk)
+            if reader is None:
+                clc_classes.append(None)
+                for key in neigh_classes:
+                    neigh_classes[key].append(None)
+                continue
 
-        row, col = reader.index(x, y)
-        height, width = _get_dims(tk)
-        val = _pixel_value(reader, row, col, width, height)
+            row, col = reader.index(x, y)
+            height, width = _get_dims(tk)
+            val = _pixel_value(reader, row, col, width, height)
 
-        clc_classes.append(val)
+            clc_classes.append(val)
 
-        # Read neighbor pixels.
-        for dr, dc, suffix in neighbor_offsets:
-            ntk, nr, nc = _resolve_neighbor(
-                tk, row, col, dr, dc,
-                tile_height=height, tile_width=width,
-            )
-            n_reader = _get_reader(ntk)
-            n_height, n_width = _get_dims(ntk)
-            n_val = _pixel_value(n_reader, nr, nc, n_width, n_height)
-            neigh_classes[f"clc_class_{suffix}"].append(n_val)
-
-    for reader in open_readers.values():
-        if reader is not None:
-            reader.close()
+            # Read neighbor pixels.
+            for dr, dc, suffix in neighbor_offsets:
+                ntk, nr, nc = _resolve_neighbor(
+                    tk, row, col, dr, dc,
+                    tile_height=height, tile_width=width,
+                )
+                n_reader = _get_reader(ntk)
+                n_height, n_width = _get_dims(ntk)
+                n_val = _pixel_value(n_reader, nr, nc, n_width, n_height)
+                neigh_classes[f"clc_class_{suffix}"].append(n_val)
+    finally:
+        for reader in open_readers.values():
+            if reader is not None:
+                reader.close()
 
     df["clc_class"] = clc_classes
 
