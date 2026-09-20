@@ -33,19 +33,19 @@ def numerical_to_categorical(value: float, thresholds: dict | None = None) -> st
     Returns
     -------
     str
-        One of ``"low"``, ``"nominal"``, or ``"high"``.
+        One of ``"l"``, ``"n"``, or ``"h"``.
     """
     if thresholds is None:
         thresholds = _load_thresholds()
     ranges = thresholds["numerical_to_categorical"]
 
     if pd.isna(value):
-        return "nominal"
+        return "n"
 
     for label in ("low", "nominal", "high"):
-        if ranges[label]["min"] <= value < ranges[label]["max"]:
+        if ranges[label]["min"] <= value <= ranges[label]["max"]:
             return label[0]  # l, n, or h
-    return "h"
+    raise ValueError(f"Numerical confidence value {value} is outside valid range [0, 100]")
 
 
 def categorical_to_numerical(value: str, thresholds: dict | None = None) -> float:
