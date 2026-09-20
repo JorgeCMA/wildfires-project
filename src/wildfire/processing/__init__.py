@@ -5,12 +5,19 @@ from .confidence import (
     categorical_to_numerical,
     numerical_to_categorical,
 )
-from .validation import validate_enriched, validate_firms
+from .validation import (
+    validate_enriched,
+    validate_enriched_clc,
+    validate_enriched_openmeteo,
+    validate_firms,
+)
 
 __all__ = [
     "numerical_to_categorical",
     "categorical_to_numerical",
     "add_unified_confidence",
     "validate_firms",
+    "validate_enriched_clc",
+    "validate_enriched_openmeteo",
     "validate_enriched",
 ]

@@ -69,9 +69,10 @@
 
 - [x] `tests/test_config.py` — config loading, directory structure, module imports
 - [x] `tests/test_firms.py` — FIRMS loading, sensor mapping, folder structure
-- [ ] `tests/test_confidence.py` — confidence mapping edge cases
+- [x] `tests/test_confidence.py` — confidence mapping edge cases
 - [x] `tests/test_clc.py` — tile loading, pixel reading
-- [ ] `tests/test_enrichment.py` — merge, CLC enrichment, weather enrichment
+- [ ] `tests/test_validation.py` — validate_firms, validate_enriched_clc, validate_enriched_openmeteo (weather checks after Open-Meteo integration)
+- [ ] `tests/test_openmeteo.py` — fetch_weather, _default_variables
 
 ### 2. Download and place raw data [DONE]
 
@@ -156,9 +157,10 @@ wildfire-build = "wildfire.cli:build_dataset"
 
 - [x] `tests/test_config.py` — carga de configuración, estructura de directorios, imports
 - [x] `tests/test_firms.py` — carga FIRMS, mapeo de sensores, estructura de carpetas
-- [ ] `tests/test_confidence.py` — casos extremos de mapeo de confianza
+- [x] `tests/test_confidence.py` — casos extremos de mapeo de confianza
 - [x] `tests/test_clc.py` — carga de tiles, lectura de píxeles
-- [ ] `tests/test_enrichment.py` — fusión, enriquecimiento CLC, enriquecimiento climático
+- [ ] `tests/test_validation.py` — validate_firms, validate_enriched_clc, validate_enriched_openmeteo (comprobaciones meteorológicas después de integrar Open-Meteo)
+- [ ] `tests/test_openmeteo.py` — fetch_weather, _default_variables
 
 ### 2. Descargar y colocar datos crudos [HECHO]
 

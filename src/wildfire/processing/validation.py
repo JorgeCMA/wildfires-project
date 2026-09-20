@@ -58,10 +58,64 @@ def validate_firms(df: pd.DataFrame) -> list[str]:
     return warnings
 
 
-def validate_enriched(df: pd.DataFrame) -> list[str]:
-    """Run quality checks on an enriched FIRMS DataFrame.
+def validate_enriched_clc(df: pd.DataFrame) -> list[str]:
+    """Run quality checks for CLCPlus land cover enrichment.
 
-    Extends ``validate_firms`` with checks for enrichment columns.
+    Checks that ``clc_class`` and optional neighborhood columns are populated.
+
+    Parameters
+    ----------
+    df:
+        Enriched FIRMS DataFrame.
+
+    Returns
+    -------
+    list[str]
+        Validation warnings.
+    """
+    warnings: list[str] = []
+
+    clc_cols = ["clc_class"]
+    for col in clc_cols:
+        if col in df.columns and df[col].isna().any():
+            n = int(df[col].isna().sum())
+            warnings.append(f"{n} rows have missing {col} values (CLC enrichment gap)")
+
+    return warnings
+
+
+def validate_enriched_openmeteo(df: pd.DataFrame) -> list[str]:
+    """Run quality checks for Open-Meteo weather enrichment.
+
+    Checks that ``temperature_2m``, ``relative_humidity_2m``, and
+    ``wind_speed_10m`` columns are populated.
+
+    Parameters
+    ----------
+    df:
+        Enriched FIRMS DataFrame.
+
+    Returns
+    -------
+    list[str]
+        Validation warnings.
+    """
+    warnings: list[str] = []
+
+    weather_cols = ["temperature_2m", "relative_humidity_2m", "wind_speed_10m"]
+    for col in weather_cols:
+        if col in df.columns and df[col].isna().any():
+            n = int(df[col].isna().sum())
+            warnings.append(f"{n} rows have missing {col} values (weather enrichment gap)")
+
+    return warnings
+
+
+def validate_enriched(df: pd.DataFrame) -> list[str]:
+    """Run all quality checks on an enriched FIRMS DataFrame.
+
+    Calls ``validate_firms``, ``validate_enriched_clc``, and
+    ``validate_enriched_openmeteo``, returning the combined warnings.
 
     Parameters
     ----------
@@ -74,17 +128,6 @@ def validate_enriched(df: pd.DataFrame) -> list[str]:
         Validation warnings.
     """
     warnings = validate_firms(df)
-
-    clc_cols = ["clc_class"]
-    for col in clc_cols:
-        if col in df.columns and df[col].isna().any():
-            n = int(df[col].isna().sum())
-            warnings.append(f"{n} rows have missing {col} values (CLC enrichment gap)")
-
-    weather_cols = ["temperature_2m", "relative_humidity_2m", "wind_speed_10m"]
-    for col in weather_cols:
-        if col in df.columns and df[col].isna().any():
-            n = int(df[col].isna().sum())
-            warnings.append(f"{n} rows have missing {col} values (weather enrichment gap)")
-
+    warnings.extend(validate_enriched_clc(df))
+    warnings.extend(validate_enriched_openmeteo(df))
     return warnings
