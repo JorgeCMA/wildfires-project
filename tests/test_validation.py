@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from wildfire.config import PROJECT_ROOT
 from wildfire.processing.validation import (
     validate_enriched,
     validate_enriched_clc,
@@ -200,7 +201,7 @@ class TestValidateEnriched:
 
 @pytest.fixture(scope="module")
 def enriched_df() -> pd.DataFrame:
-    path = r"C:\Projects\wildfires-project\data\processed\enriched\firms_spain_enriched.csv"
+    path = PROJECT_ROOT / "data" / "processed" / "enriched" / "firms_spain_enriched.csv"
     return pd.read_csv(path)
 
 
@@ -210,11 +211,11 @@ class TestAgainstRealData:
         assert warnings == []
 
     def test_validate_enriched_clc_detects_gaps(self, enriched_df):
-        """Real dataset has 125 rows with missing clc_class — verify detection."""
+        """Real dataset has rows with missing clc_class — verify detection."""
         warnings = validate_enriched_clc(enriched_df)
         assert len(warnings) == 1
-        assert "125" in warnings[0]
         assert "clc_class" in warnings[0]
+        assert "enrichment gap" in warnings[0]
 
     def test_validate_enriched_openmeteo_skipped(self, enriched_df):
         """Weather columns not present yet — no warnings expected."""

@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from wildfire.config import PROJECT_ROOT
 from wildfire.processing.confidence import (
     _load_thresholds,
     add_unified_confidence,
@@ -253,7 +254,7 @@ class TestAddUnifiedConfidence:
 @pytest.fixture(scope="module")
 def enriched_df() -> pd.DataFrame:
     """Load the real enriched FIRMS dataset."""
-    path = r"C:\Projects\wildfires-project\data\processed\enriched\firms_spain_enriched.csv"
+    path = PROJECT_ROOT / "data" / "processed" / "enriched" / "firms_spain_enriched.csv"
     return pd.read_csv(path)
 
 
