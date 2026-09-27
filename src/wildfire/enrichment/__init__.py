@@ -7,7 +7,12 @@ from .clc_enrichment import (
     load_enriched,
     save_enriched,
 )
-from .merge_sensors import load_merged, merge_viirs_modis, save_merged
+from .merge_sensors import (
+    load_latest_merged_split,
+    load_merged,
+    merge_viirs_modis,
+    save_merged,
+)
 from .weather_enrichment import enrich_with_weather, save_weather_enriched
 
 __all__ = [
@@ -16,6 +21,7 @@ __all__ = [
     "merge_viirs_modis",
     "save_merged",
     "load_merged",
+    "load_latest_merged_split",
     "enrich_with_clc",
     "save_enriched",
     "load_enriched",

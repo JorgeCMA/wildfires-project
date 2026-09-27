@@ -103,3 +103,35 @@ def load_merged(country: str = "Spain", year: int | None = None) -> pd.DataFrame
         raise FileNotFoundError(f"Merged file not found: {path}")
 
     return pd.read_csv(path)
+
+
+def load_latest_merged_split(
+    country: str = "Spain",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Load the most recently modified merged CSV and split it in two parts.
+
+    Parameters
+    ----------
+    country:
+        Country name used to filter candidate files.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, pd.DataFrame]
+        The first 3 rows of the latest merged CSV and all remaining rows.
+
+    Raises
+    ------
+    FileNotFoundError
+        If no merged CSV exists for the country in ``data/processed/merged/``.
+    """
+    config = load_config()
+    out_dir = Path(config["output"]["merged"])
+
+    candidates = list(out_dir.glob(f"firms_{country.lower()}*_merged.csv"))
+    if not candidates:
+        raise FileNotFoundError(f"No merged files found in: {out_dir}")
+
+    path = max(candidates, key=lambda p: p.stat().st_mtime)
+    df = pd.read_csv(path)
+    return df.head(3), df.iloc[3:]

@@ -47,4 +47,5 @@ scripts/*.exe
 
 # Test/cache
 .pytest_cache/
+.cache*
 data/processed/enriched/firms_spain_enriched_backup.csv
