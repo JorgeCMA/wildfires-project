@@ -8,7 +8,6 @@ from .clc_enrichment import (
     save_enriched,
 )
 from .merge_sensors import (
-    load_latest_merged_split,
     load_merged,
     merge_viirs_modis,
     save_merged,
@@ -21,7 +20,6 @@ __all__ = [
     "merge_viirs_modis",
     "save_merged",
     "load_merged",
-    "load_latest_merged_split",
     "enrich_with_clc",
     "save_enriched",
     "load_enriched",

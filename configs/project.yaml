@@ -33,6 +33,10 @@ clcplus:
 openmeteo:
   source: Open-Meteo
   base_url: "https://archive-api.open-meteo.com/v1/archive"
+  # Número de filas (detecciones) que se envían en cada consulta por lotes.
+  # Fácil de editar para probar hasta dónde aguanta la API.
+  # Vive fuera de batch_query para que NO se envíe como parámetro HTTP.
+  batch_rows: 500
   hourly_variables:
     - temperature_2m
     - relative_humidity_2m

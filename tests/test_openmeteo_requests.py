@@ -1,4 +1,4 @@
-"""Integration test for the ``openmeteo-requests`` SDK (batch multi-location query)."""
+"""Batch query for the ``openmeteo-requests`` SDK: resumable weather fetch."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from wildfire.config import PROJECT_ROOT, load_config
-from wildfire.enrichment import load_latest_merged_split
+from wildfire.enrichment import load_merged
 
 # Claves cuyo valor varía por fila: se convierten en listas (una entrada por
 # ubicación) para la consulta por lotes. El resto (hourly, models, timezone)
@@ -19,6 +19,14 @@ ROW_KEYS = ("latitude", "longitude", "start_date", "end_date")
 # Dónde se guarda la respuesta HTTP para reutilizarla después
 OUTPUT_JSON = (
     PROJECT_ROOT / load_config()["output"]["processed"] / "openmeteo_response.json"
+)
+
+# CSV de enriquecimiento parcial: es a la vez entrada (reanudación) y salida.
+# Todavía no existe: mientras tanto se parte del merged.
+PARTIAL_CSV = (
+    PROJECT_ROOT
+    / load_config()["output"]["enriched"]
+    / "firms_spain_enriched_partial.csv"
 )
 
 
@@ -46,18 +54,58 @@ def build_row_requests(df: pd.DataFrame) -> list[dict]:
     return row_requests
 
 
-def build_batch_request(df: pd.DataFrame | None = None) -> tuple[str, dict]:
+def load_partial_or_merged() -> pd.DataFrame:
+    """CSV de enriquecimiento parcial si existe; si no, el merged completo."""
+    if PARTIAL_CSV.exists():
+        return pd.read_csv(PARTIAL_CSV)
+    return load_merged()
+
+
+def find_resume_row(df: pd.DataFrame) -> int:
+    """Primera fila sin valor de ``temperature_2m`` (dónde sigue la descarga).
+
+    - Sin columna de clima (merged en crudo) → ``0``.
+    - Con algunas filas sin rellenar → su posición (p. ej. 500 si 0-499 ya
+      tienen valor).
+    - Todo rellenado → ``len(df)`` (no queda nada que descargar).
+    """
+    if "temperature_2m" not in df.columns:
+        return 0
+
+    missing = df["temperature_2m"].isna().to_numpy().nonzero()[0]
+    return int(missing[0]) if missing.size else len(df)
+
+
+def next_batch(
+    df: pd.DataFrame | None = None,
+    batch_rows: int | None = None,
+) -> pd.DataFrame:
+    """Siguiente lote a descargar: ``batch_rows`` filas desde la de reanudación.
+
+    Parameters
+    ----------
+    df:
+        DataFrame de entrada. Por defecto ``load_partial_or_merged()``.
+    batch_rows:
+        Tamaño del lote. Por defecto ``openmeteo.batch_rows`` de config.
+    """
+    if df is None:
+        df = load_partial_or_merged()
+    if batch_rows is None:
+        batch_rows = load_config()["openmeteo"]["batch_rows"]
+
+    start = find_resume_row(df)
+    return df.iloc[start : start + batch_rows]
+
+
+def build_batch_request(df: pd.DataFrame) -> tuple[str, dict]:
     """Construye ``(url, params)`` de la consulta por lotes multi-ubicación.
 
     Latitud, longitud y fechas salen de las filas de entrada: cada una aporta
     su ``latitude``/``longitude`` y su ``acq_date`` como ``start_date`` y
-    ``end_date``. Por defecto se usan las 3 primeras filas del merged más
-    reciente (``load_latest_merged_split``). El resto de parámetros
+    ``end_date`` (``next_batch`` decide qué filas). El resto de parámetros
     (``hourly``, ``models``, ``timezone``) viene de ``configs/project.yaml``.
     """
-    if df is None:
-        df, _ = load_latest_merged_split()
-
     config = load_config()["openmeteo"]
     row_requests = build_row_requests(df)
 
@@ -134,97 +182,71 @@ def interpolate_hourly_fields(hourly: list[dict], acq_time: str | float) -> dict
     return interpolated
 
 
-def run_multi_location_query(
-    save_path: Path | None = OUTPUT_JSON,
-) -> list[pd.DataFrame]:
-    """Ejecuta una consulta por lotes a Open-Meteo para varias ubicaciones.
+def fetch_next_batch(save_path: Path | None = OUTPUT_JSON) -> None:
+    """Descarga el siguiente lote de ``batch_rows`` filas y guarda la respuesta.
 
-    Los parámetros los construye ``build_batch_request`` (3 primeras filas del
-    merged). Devuelve un ``DataFrame`` por ubicación con las variables
-    horarias pedidas.
+    Flujo de reanudación: carga el CSV de enriquecimiento parcial (si no
+    existe, el merged), busca la primera fila sin ``temperature_2m`` y pide
+    ``openmeteo.batch_rows`` filas desde esa posición. Latitud, longitud y
+    ``acq_date`` (como fecha inicial y final) salen de cada fila.
+
+    La petición se envía en POST: con 500 filas la URL de un GET supera los
+    38 KB y nginx responde ``414 Request-URI Too Large``.
 
     Parameters
     ----------
     save_path:
         Si no es ``None``, guarda la respuesta HTTP como JSON (petición +
         un registro por ubicación) en esta ruta, sobrescribiéndola.
+
+    Notes
+    -----
+    Tras guardar la respuesta se hace ``return``: el relleno del CSV parcial
+    con las horas ponderadas de ``interpolate_hourly_fields`` es el siguiente
+    paso y todavía no está implementado.
     """
     import openmeteo_requests
     import requests_cache
     from retry_requests import retry
+
+    batch = next_batch()
+    if batch.empty:
+        print("Nothing to fetch: every row already has a temperature_2m value")
+        return
 
     # Cliente de la API con caché y reintentos (el código de abajo asume `openmeteo`)
     session = requests_cache.CachedSession(".cache", expire_after=3600)
     session = retry(session, retries=5, backoff_factor=0.2)
     openmeteo = openmeteo_requests.Client(session=session)
 
-    url, params = build_batch_request()
+    url, params = build_batch_request(batch)
 
-    responses = openmeteo.weather_api(url, params=params)
+    responses = openmeteo.weather_api(url, params=params, method="POST")
 
-    dataframes: list[pd.DataFrame] = []
     records: list[dict] = []
-
-    # Process each location
     for response in responses:
         # Con timezone=GMT el flatbuffer no trae nombre de zona horaria
         timezone = (response.Timezone() or b"GMT").decode()
-
-        print(f"\nCoordinates: {response.Latitude()}°N {response.Longitude()}°E")
-        print(f"Elevation: {response.Elevation()} m asl")
-        print(f"Timezone: {timezone}")
-        print(f"Timezone difference to GMT+0: {response.UtcOffsetSeconds()}s")
-
-        # Process hourly data. The order of variables needs to be the same as requested.
-        hourly = response.Hourly()
-        hourly_temperature_2m = hourly.Variables(0).ValuesAsNumpy()
-        hourly_precipitation = hourly.Variables(1).ValuesAsNumpy()
-        hourly_surface_pressure = hourly.Variables(2).ValuesAsNumpy()
-        hourly_relative_humidity_2m = hourly.Variables(3).ValuesAsNumpy()
-        hourly_wind_speed_10m = hourly.Variables(4).ValuesAsNumpy()
-        hourly_wind_direction_10m = hourly.Variables(5).ValuesAsNumpy()
-        hourly_wind_gusts_10m = hourly.Variables(6).ValuesAsNumpy()
-        hourly_rain = hourly.Variables(7).ValuesAsNumpy()
-        hourly_et0_fao_evapotranspiration = hourly.Variables(8).ValuesAsNumpy()
-        hourly_shortwave_radiation = hourly.Variables(9).ValuesAsNumpy()
-        hourly_boundary_layer_height = hourly.Variables(10).ValuesAsNumpy()
-        hourly_is_day = hourly.Variables(11).ValuesAsNumpy()
-        hourly_vapour_pressure_deficit = hourly.Variables(12).ValuesAsNumpy()
-        hourly_soil_moisture_0_to_7cm = hourly.Variables(13).ValuesAsNumpy()
-        hourly_soil_moisture_7_to_28cm = hourly.Variables(14).ValuesAsNumpy()
-
         # El epoch del flatbuffer es UTC absoluto y con timezone=GMT el offset
         # es 0, así que la ventana pedida sale directa: 00:00-23:00 de
         # acq_date en UTC (igual que acq_date/acq_time de FIRMS).
         assert response.UtcOffsetSeconds() == 0
-        hourly_data = {
-            "date": pd.date_range(
-                start=pd.to_datetime(hourly.Time(), unit="s"),
-                end=pd.to_datetime(hourly.TimeEnd(), unit="s"),
-                freq=pd.Timedelta(seconds=hourly.Interval()),
-                inclusive="left",
-            )
-        }
-        hourly_data["temperature_2m"] = hourly_temperature_2m
-        hourly_data["precipitation"] = hourly_precipitation
-        hourly_data["surface_pressure"] = hourly_surface_pressure
-        hourly_data["relative_humidity_2m"] = hourly_relative_humidity_2m
-        hourly_data["wind_speed_10m"] = hourly_wind_speed_10m
-        hourly_data["wind_direction_10m"] = hourly_wind_direction_10m
-        hourly_data["wind_gusts_10m"] = hourly_wind_gusts_10m
-        hourly_data["rain"] = hourly_rain
-        hourly_data["et0_fao_evapotranspiration"] = hourly_et0_fao_evapotranspiration
-        hourly_data["shortwave_radiation"] = hourly_shortwave_radiation
-        hourly_data["boundary_layer_height"] = hourly_boundary_layer_height
-        hourly_data["is_day"] = hourly_is_day
-        hourly_data["vapour_pressure_deficit"] = hourly_vapour_pressure_deficit
-        hourly_data["soil_moisture_0_to_7cm"] = hourly_soil_moisture_0_to_7cm
-        hourly_data["soil_moisture_7_to_28cm"] = hourly_soil_moisture_7_to_28cm
 
-        hourly_dataframe = pd.DataFrame(data=hourly_data)
-        print("\nHourly data\n", hourly_dataframe)
-
-        dataframes.append(hourly_dataframe)
+        hourly = response.Hourly()
+        hourly_dataframe = pd.DataFrame(
+            {
+                "date": pd.date_range(
+                    start=pd.to_datetime(hourly.Time(), unit="s"),
+                    end=pd.to_datetime(hourly.TimeEnd(), unit="s"),
+                    freq=pd.Timedelta(seconds=hourly.Interval()),
+                    inclusive="left",
+                )
+            }
+        )
+        # El orden de variables es el mismo que se pidió en batch_query
+        names = params["hourly"]
+        for index, name in enumerate(names):
+            hourly_dataframe[name] = hourly.Variables(index).ValuesAsNumpy()
 
         serializable = hourly_dataframe.copy()
         serializable["date"] = serializable["date"].map(lambda d: d.isoformat())
@@ -245,14 +267,79 @@ def run_multi_location_query(
         save_path.write_text(
             json.dumps(payload, indent=2, allow_nan=False), encoding="utf-8"
         )
-        print(f"\nSaved HTTP response to: {save_path}")
+        print(
+            f"Batch of {len(batch)} rows -> {len(records)} responses "
+            f"saved to {save_path}"
+        )
 
-    return dataframes
+    return
+
+
+# ---------------------------------------------------------------------------
+# Configuración y reanudación — sin HTTP
+# ---------------------------------------------------------------------------
+
+
+def test_batch_rows_config():
+    """``batch_rows`` es un entero positivo y NO se envía a la API."""
+    openmeteo = load_config()["openmeteo"]
+
+    assert isinstance(openmeteo["batch_rows"], int)
+    assert openmeteo["batch_rows"] > 0
+    # Vive fuera de batch_query a propósito: batch_query se copia tal cual
+    # a los parámetros HTTP.
+    assert "batch_rows" not in openmeteo["batch_query"]
+
+
+def test_find_resume_row_without_weather_column():
+    """Sin columnas de clima (merged en crudo) se empieza por la fila 0."""
+    df = pd.DataFrame({"latitude": [40.0, 41.0]})
+
+    assert find_resume_row(df) == 0
+
+
+def test_find_resume_row_partial_fill():
+    """Con filas sin rellenar se continúa por la primera que falta."""
+    df = pd.DataFrame({"temperature_2m": [1.0, 2.0, None, None]})
+
+    assert find_resume_row(df) == 2
+
+
+def test_find_resume_row_all_filled():
+    """Todo rellenado -> no queda nada que descargar."""
+    df = pd.DataFrame({"temperature_2m": [1.0, 2.0]})
+
+    assert find_resume_row(df) == 2
+
+
+def test_next_batch_uses_config_batch_rows():
+    """El lote sale del merged y mide ``batch_rows`` (hoy resume = 0)."""
+    batch_rows = load_config()["openmeteo"]["batch_rows"]
+    batch = next_batch(load_merged())
+
+    assert len(batch) == batch_rows
+    assert batch.index[0] == 0
+
+
+def test_next_batch_respects_resume_and_tail():
+    """Respeta la fila de reanudación y el lote final puede ser más corto."""
+    df = pd.DataFrame(
+        {"temperature_2m": [1.0] * 10 + [None] * 90, "latitude": range(100)}
+    )
+
+    batch = next_batch(df, batch_rows=5)
+    assert list(batch.index) == [10, 11, 12, 13, 14]
+
+    tail = next_batch(df, batch_rows=100)
+    assert len(tail) == 90
+
+    full = pd.DataFrame({"temperature_2m": [1.0] * 10})
+    assert next_batch(full, batch_rows=5).empty
 
 
 def test_row_requests_from_first_rows():
     """Las 3 primeras filas del merged generan 3 peticiones con su propia fecha."""
-    first, _ = load_latest_merged_split()
+    first = load_merged().head(3)
     row_requests = build_row_requests(first)
 
     assert len(row_requests) == 3
@@ -265,8 +352,8 @@ def test_row_requests_from_first_rows():
 
 
 def test_build_batch_request_from_first_rows():
-    """La consulta por lotes toma lat/lon/fechas de las 3 primeras filas."""
-    first, _ = load_latest_merged_split()
+    """La consulta por lotes toma lat/lon/fechas de las filas dadas."""
+    first = load_merged().head(3)
     url, params = build_batch_request(first)
 
     assert url == load_config()["openmeteo"]["base_url"]
@@ -282,48 +369,53 @@ def test_build_batch_request_from_first_rows():
     assert params["hourly"] == load_config()["openmeteo"]["batch_query"]["hourly"]
     assert params["models"] == "best_match"
     assert params["timezone"] == "GMT"
+    # batch_rows es interno: nunca viaja a la API
+    assert "batch_rows" not in params
 
 
 @pytest.mark.integration
-def test_multi_location_batch_query():
-    """Una sola petición devuelve las 3 ubicaciones con 24 horas y 15 variables."""
-    first, _ = load_latest_merged_split()
-    url, params = build_batch_request(first)
-    dataframes = run_multi_location_query()
+def test_fetch_next_batch_saves_response():
+    """POST por lotes: ``batch_rows`` filas -> respuesta completa en el JSON."""
+    batch_rows = load_config()["openmeteo"]["batch_rows"]
+    batch = next_batch(load_partial_or_merged())
+    assert len(batch) == batch_rows
+
+    # Corta tras guardar la respuesta (horas ponderadas: siguiente paso)
+    assert fetch_next_batch() is None
 
     # La respuesta HTTP queda guardada en JSON para reutilizarla después
     assert OUTPUT_JSON.exists()
     payload = json.loads(OUTPUT_JSON.read_text(encoding="utf-8"))
-    assert payload["url"] == url
-    assert payload["params"] == params
+    params = payload["params"]
+
+    # Una respuesta por fila del lote, con sus coordenadas y fechas
+    assert len(payload["responses"]) == batch_rows
+    for key in ROW_KEYS:
+        assert len(params[key]) == batch_rows
+    assert params["latitude"] == batch["latitude"].tolist()
+    assert params["longitude"] == batch["longitude"].tolist()
+    expected_dates = [str(d)[:10] for d in batch["acq_date"]]
+    assert params["start_date"] == expected_dates
+    assert params["end_date"] == expected_dates
+
     # Todo en UTC: ni la petición ni las respuestas usan zona horaria local
-    assert payload["params"]["timezone"] == "GMT"
+    assert params["timezone"] == "GMT"
     assert {record["timezone"] for record in payload["responses"]} == {"GMT"}
     assert {record["utc_offset_seconds"] for record in payload["responses"]} == {0}
 
-    # Una respuesta por cada par (lat, lon) pedido
-    assert len(dataframes) == len(params["latitude"])
-    assert len(params["latitude"]) == len(params["longitude"])
-
-    for df in dataframes:
-        # Un día completo de datos horarios (acq_date == start_date == end_date)
-        assert len(df) == 24
-        # date + las variables pedidas, en el mismo orden
-        assert list(df.columns) == ["date", *params["hourly"]]
-        # Sin huecos en la variable principal y horario continuo de 1h
-        assert df["temperature_2m"].notna().all()
-        assert df["date"].diff().dropna().eq(pd.Timedelta(hours=1)).all()
-        # is_day es binario
-        assert set(df["is_day"].unique()) <= {0.0, 1.0}
-
-    # Cada registro corresponde a su fila: coordenadas ≈ pedidas (la API
-    # devuelve el centro de la celda más cercana) y fecha = acq_date
-    for (_, row), record in zip(first.iterrows(), payload["responses"], strict=True):
+    # Primera y última fila: coordenadas ≈ pedidas (la API devuelve el centro
+    # de la celda), 24 horas desde acq_date y todas las variables pedidas
+    hourly_fields = params["hourly"]
+    for row, record in (
+        (batch.iloc[0], payload["responses"][0]),
+        (batch.iloc[-1], payload["responses"][-1]),
+    ):
         assert record["latitude"] == pytest.approx(row["latitude"], abs=0.1)
         assert record["longitude"] == pytest.approx(row["longitude"], abs=0.1)
         hours = record["hourly"]
         assert len(hours) == 24
         assert hours[0]["date"].startswith(str(row["acq_date"])[:10])
+        assert list(hours[0]) == ["date", *hourly_fields]
 
 
 # ---------------------------------------------------------------------------
@@ -363,9 +455,14 @@ def test_split_acq_time():
 def test_interpolate_matches_saved_response():
     """Cada campo del response se interpola con el % de minutos de su fila."""
     responses = _saved_responses()
-    first, _ = load_latest_merged_split()
+    first = load_merged().head(3)
 
-    for (_, row), record in zip(first.iterrows(), responses, strict=True):
+    # El JSON guardado tiene que corresponder a las primeras filas (resume=0);
+    # cuando la reanudación avance, este fallo avisa de que hay que replantear
+    payload = json.loads(OUTPUT_JSON.read_text(encoding="utf-8"))
+    assert payload["params"]["latitude"][:3] == first["latitude"].tolist()
+
+    for (_, row), record in zip(first.iterrows(), responses[:3], strict=True):
         hourly = record["hourly"]
         hour, _minutes, pct = split_acq_time(row["acq_time"])
         values = interpolate_hourly_fields(hourly, row["acq_time"])
@@ -384,8 +481,7 @@ def test_interpolate_matches_saved_response():
 def test_interpolate_concrete_value():
     """Ejemplo concreto: fila 0 = acq_time 221 (02:21) -> 35% hacia las 03:00."""
     hourly = _saved_responses()[0]["hourly"]
-    first, _ = load_latest_merged_split()
-    row = first.iloc[0]
+    row = load_merged().iloc[0]
 
     assert int(row["acq_time"]) == 221
     values = interpolate_hourly_fields(hourly, row["acq_time"])
