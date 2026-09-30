@@ -1,13 +1,16 @@
 """Data loading modules."""
 
+from .ccaa import add_ccaa_budget_sums, load_ccaa_budget
 from .clc import list_clc_tiles
-from .firms import load_all_firms, load_firms, list_available_firms
+from .firms import list_available_firms, load_all_firms, load_firms
 from .openmeteo import fetch_weather
 
 __all__ = [
-    "load_firms",
-    "load_all_firms",
+    "add_ccaa_budget_sums",
+    "fetch_weather",
     "list_available_firms",
     "list_clc_tiles",
-    "fetch_weather",
+    "load_all_firms",
+    "load_ccaa_budget",
+    "load_firms",
 ]

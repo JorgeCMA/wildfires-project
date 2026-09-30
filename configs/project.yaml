@@ -87,6 +87,18 @@ openmeteo:
       - soil_moisture_0_to_7cm
       - soil_moisture_7_to_28cm
 
+# Presupuestos por comunidad autónoma (datos en data/raw/ccaa/).
+# Regional budgets (prevention + extinction) from data/raw/ccaa/.
+ccaa:
+  # Relativo a la raíz del proyecto (PROJECT_ROOT). / Project-root-relative.
+  path: "data/raw/ccaa/Datos_CCAA_Presupuesto - Datos y Variables Model.csv"
+  # n de la ventana móvil que se suma por fila en `add_ccaa_budget_sums`:
+  # [año_fila - n + 1 .. año_fila] anclado al año de acq_date.
+  # n=3 → 2024 suma 2022+2023+2024; 2023 suma 2021+2022+2023.
+  # Años fuera del rango del fichero (2020-2025) no aportan nada;
+  # ventana sin ningún año disponible → NaN (nunca 0).
+  years_window: 3
+
 output:
   merged: data/processed/merged
   enriched: data/processed/enriched
