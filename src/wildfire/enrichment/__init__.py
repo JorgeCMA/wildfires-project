@@ -12,17 +12,25 @@ from .merge_sensors import (
     merge_viirs_modis,
     save_merged,
 )
+from .weather_batch import (
+    WeatherBatchStatus,
+    fetch_next_batch,
+    run_weather_enrichment,
+)
 from .weather_enrichment import enrich_with_weather, save_weather_enriched
 
 __all__ = [
     "CLC_LABELS",
     "NEIGHBORHOOD_RINGS",
-    "merge_viirs_modis",
-    "save_merged",
-    "load_merged",
+    "WeatherBatchStatus",
     "enrich_with_clc",
-    "save_enriched",
-    "load_enriched",
     "enrich_with_weather",
+    "fetch_next_batch",
+    "load_enriched",
+    "load_merged",
+    "merge_viirs_modis",
+    "run_weather_enrichment",
+    "save_enriched",
+    "save_merged",
     "save_weather_enriched",
 ]

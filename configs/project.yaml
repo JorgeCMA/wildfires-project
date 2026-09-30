@@ -37,6 +37,21 @@ openmeteo:
   # Fácil de editar para probar hasta dónde aguanta la API.
   # Vive fuera de batch_query para que NO se envíe como parámetro HTTP.
   batch_rows: 500
+  # Pausa proactiva (segundos) entre lotes correctos en
+  # run_weather_enrichment. 0 = solo reactiva (solo espera tras un 429).
+  # 450 medido por scripts/probe_openmeteo_weight.py (peso ~700/lote de
+  # 500 filas: manda el límite horario, 3600/8 = 450 s; el/minuto admite 1).
+  batch_interval_seconds: 450
+  # Margen añadido sobre la frontera UTC (minuto/hora) antes de reintentar
+  # tras un 429: el contador del servidor se limpia en la frontera, no la
+  # petición, así que damos un margen para no caer en la ventana vieja.
+  minutely_buffer_seconds: 5
+  hourly_buffer_seconds: 10
+  # Espera fija tras "Too many concurrent requests" (segundos).
+  concurrent_backoff_seconds: 5
+  # Reintentos máximos seguidos del mismo límite (sin lote correcto
+  # intercalado) antes de parar limpio en vez de buclear para siempre.
+  max_consecutive_waits: 3
   hourly_variables:
     - temperature_2m
     - relative_humidity_2m
