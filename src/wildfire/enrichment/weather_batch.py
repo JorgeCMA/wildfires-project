@@ -43,12 +43,21 @@ OUTPUT_JSON = (
 # CSV de enriquecimiento parcial: es a la vez entrada (reanudación) y salida.
 # Base = merged (sin CLC): el orden del pipeline es merge -> confianza ->
 # open-meteo -> CLC, así la enriquecidora de CLC se puede repetir sin volver
-# a gastar la API meteorológica. Todavía no existe: mientras tanto se parte
-# del merged.
+# a gastar la API meteorológica. Empieza como copia del merged y va ganando
+# las 15 columnas de clima lote a lote (una fila con `temperature_2m` = lote
+# ya descargado). Nombre autoexplicativo: denota que contiene clima parcial.
 PARTIAL_CSV = (
     PROJECT_ROOT
     / load_config()["output"]["enriched"]
-    / "firms_spain_enriched_partial.csv"
+    / "firms_spain_weather_partial.csv"
+)
+
+# CSV de clima terminado: lo escribe `finalize_weather_csv` cuando la
+# reanudación llega al final (todas las filas con `temperature_2m`). Es la
+# entrada de la celda de clima del notebook 01; si no existe, esa celda
+# cae en el parcial y se queda con las filas ya rellenadas.
+WEATHER_COMPLETE_CSV = (
+    PROJECT_ROOT / load_config()["output"]["enriched"] / "firms_spain_weather.csv"
 )
 
 
@@ -92,6 +101,59 @@ def load_partial_or_merged(path: Path = PARTIAL_CSV) -> pd.DataFrame:
     if path.exists():
         return pd.read_csv(path)
     return load_merged()
+
+
+def load_weather_for_clc(
+    complete_path: Path = WEATHER_COMPLETE_CSV,
+    partial_path: Path = PARTIAL_CSV,
+) -> pd.DataFrame:
+    """Dataset de clima listo para la celda de CLC del notebook 01.
+
+    Flujo (contrato de la celda 3 del notebook):
+
+    1. Si existe el CSV de clima **terminado** → se devuelve tal cual
+       (todas las filas ya tienen las 15 variables).
+    2. Si no → se parte del **parcial** y solo se quedan las filas con
+       valor de ``temperature_2m`` (las descargadas hasta ahora). Así el
+       notebook puede avanzar con los ~5.000 primeros llenos mientras la
+       descarga sigue por separado.
+
+    Parameters
+    ----------
+    complete_path:
+        CSV terminado. Por defecto ``WEATHER_COMPLETE_CSV``.
+    partial_path:
+        CSV de reanudación. Por defecto ``PARTIAL_CSV``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Filas con clima, en el mismo orden que el parcial/merged.
+
+    Raises
+    ------
+    RuntimeError
+        Si todavía no hay ningún dato de clima: ni el CSV terminado
+        existe ni el parcial tiene la columna ``temperature_2m`` (o la
+        tiene pero vacía) → hay que ejecutar el paso de clima primero.
+    """
+    if complete_path.exists():
+        return pd.read_csv(complete_path)
+
+    df = load_partial_or_merged(partial_path)
+    if "temperature_2m" not in df.columns:
+        raise RuntimeError(
+            "No weather data found (no completed CSV and the partial one has "
+            "no temperature_2m column): run the Open-Meteo step first "
+            "(scripts/enrich_weather_batch.py)"
+        )
+    filled = df.dropna(subset=["temperature_2m"])
+    if filled.empty:
+        raise RuntimeError(
+            f"No row has a temperature_2m value in {partial_path}: run the "
+            "Open-Meteo step first (scripts/enrich_weather_batch.py)"
+        )
+    return filled
 
 
 def find_resume_row(df: pd.DataFrame) -> int:
@@ -390,6 +452,51 @@ def fetch_next_batch(
             f"Rows {start}-{start + len(records) - 1} filled -> {csv_path} "
             f"(resume now at {find_resume_row(df)})"
         )
+
+
+def finalize_weather_csv(
+    partial_path: Path = PARTIAL_CSV,
+    complete_path: Path = WEATHER_COMPLETE_CSV,
+) -> Path | None:
+    """Copia el parcial completo al CSV de clima terminado (idempotente).
+
+    La llama ``scripts/enrich_weather_batch.py`` cuando
+    :func:`run_weather_enrichment` devuelve
+    :attr:`WeatherBatchStatus.COMPLETE`. Es una copia, no un renombrado:
+    el parcial sigue siendo el punto de reanudación si más adelante se
+    vuelven a bajar filas (p. ej. por un re-merge).
+
+    Parameters
+    ----------
+    partial_path:
+        CSV de reanudación. Por defecto ``PARTIAL_CSV``.
+    complete_path:
+        Destino. Por defecto ``WEATHER_COMPLETE_CSV``.
+
+    Returns
+    -------
+    Path | None
+        ``complete_path`` si el CSV terminado ya existía o se acaba de
+        crear; ``None`` si el parcial todavía está incompleto (no se
+        toca nada).
+
+    Raises
+    ------
+    FileNotFoundError
+        Si no existe el parcial.
+    """
+    if not partial_path.exists():
+        raise FileNotFoundError(f"Partial CSV not found: {partial_path}")
+
+    df = load_partial_or_merged(partial_path)
+    if find_resume_row(df) < len(df):
+        return None
+    if complete_path.exists():
+        return complete_path
+
+    complete_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(complete_path, index=False)
+    return complete_path
 
 
 # ---------------------------------------------------------------------------

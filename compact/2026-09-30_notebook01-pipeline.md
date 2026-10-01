@@ -10,8 +10,8 @@ Replaces `compact/2026-09-28_openmeteo-batch-weather.md` (its open items are abs
 |---|---|---|
 | 1 | This compact (draft + absorb 09-28) | ✅ |
 | 2 | `ccaa:` config + `data/ccaa.py` + tests | ✅ |
-| 3 | Weather loader/finalizer + partial rename + script | ⬜ |
-| 4 | `save_enriched(filename=…)` | ⬜ |
+| 3 | Weather loader/finalizer + partial rename + script | ✅ |
+| 4 | `save_enriched(filename=…)` + **scope B: `PROJECT_ROOT`-anchor all 7 cwd-relative path sites** | 🔄 in progress |
 | 5 | Notebook cells 1–5 (weather commented, CLC, sealed TODO) | ⬜ |
 | 6 | Geopandas `assign_ccaa` + notebook cell 6 + final CSV | ⬜ (paused on boundaries-source question) |
 | 7 | Full verification (ruff/mypy/pytest + notebook run) | ⬜ |
@@ -51,6 +51,26 @@ Pipeline order (as decided in the 09-28 session, now being applied): **merge →
 5. **Cell 5** — *fully commented*: `# TODO (ES/EN) pendiente con el equipo — ¿eliminar filas con clc_class == 1 ("Sealed")?`
 6. **Cell 6** — `assign_ccaa` → `add_ccaa_budget_sums` → save `firms_spain_final.csv` + analysis.
 
+## Verification Sweep — post-Part 3 (2026-09-30)
+
+- `pytest -m "not integration"` → **270 passed**; `mypy src/` → 14 errors (**exact baseline**, none in touched files); `ruff check src/ tests/ scripts/` → 38 errors, **all pre-existing/untouched**; `ruff format --check` → 17 unformatted, **none ours**.
+- Functional: exports resolve; `load_weather_for_clc()` → 25,500×37 (0 NaN); `finalize_weather_csv()` → `None` + creates nothing (incomplete); script `--help` OK; YAML/notebook JSON valid; full chain smoke (weather→CLC→budgets, 20 rows) ran with `FutureWarning` as error; sums hand-checked.
+- Full `pytest tests/` (integration **included**) → **2 failed**: Open-Meteo **daily quota exhausted by the parallel download** (`429` + `Daily API request limit exceeded`) — environmental, documented, not code.
+- Git: user committed `2154f1a` (weather work) + `cff00a5` (Parts 1–2 + compact); working tree = Part 3 + partial rename (` D` old tracked / `??` new → `git add -A` when committing).
+
+## Medium-Importance Issues (elaborated 2026-09-30; NOT in TODO — light issues went to TODO.md)
+
+1. **Integration tests quota-flaky**: `test_openmeteo.py:149` (plain uncached `requests.get`, can't be cached as written) + `test_openmeteo_requests.py:198` (POST, cached but a miss costs a real 500-row/weight-700 call = ~7% of daily budget). Both fail whenever the download has spent the quota (today). Hidden side effect: the POST test's `save_path` defaults to `OUTPUT_JSON` → **overwrites the tracked `openmeteo_response.json`**. Fix direction: register marker + `addopts = "-m 'not integration'"` + skip-on-429 + `session=` param for `fetch_weather` + `save_path=tmp_path` in the test.
+3. *(numbering as originally listed)* **Notebook tooling absent**: only `ipykernel`/`ipython`/`jupyter_client` installed — no `nbformat`/`nbconvert`/`nbclient`, so no `nbformat.validate()` and no headless execution (Part 7 acceptance check needs it). Root cause found alongside: **cwd-relative save/load helpers** (see Part 4 scope B) already produced a 5.3 MB duplicate at `notebooks/data/processed/merged/` (written 29-Sep 11:53).
+2. **Large generated data in git**: `cff00a5` carried 317k JSON lines + 7.9k CSV lines of regenerated data; every weather batch rewrites both tracked artifacts → repo bloat. Needs a tracking policy.
+4. **README drift**: documents the old CLC→weather order, non-existent `geo/` module, English notebook names (`00_master.ipynb` vs `00_introduccion.ipynb`), mangled script-list comments.
+
+## Part 4 — Scope B (decided 2026-09-30)
+
+- `save_enriched(df, country=…, year=…, filename: str | None = None)` — `None` keeps the legacy `firms_spain_enriched.csv` (back-compat for `scripts/enrich_with_clc.py` + real-data tests); explicit name → `data/processed/enriched/<filename>`.
+- Anchor **all 7 cwd-relative sites** to `PROJECT_ROOT`: `merge_sensors.save_merged`/`load_merged`, `clc_enrichment.save_enriched`/`load_enriched`, `weather_enrichment.save_weather_enriched`, `firms.list_available_firms`, `weather_batch` `CachedSession(".cache")`. (`Path.__truediv__` lets an absolute config value win, so it degrades gracefully.) Then delete the orphaned `notebooks/data/` copy.
+- Rationale: Jupyter/nbconvert run with cwd = notebook dir → relative paths split the dataset (notebook reads `notebooks/data/…`, tests/scripts read repo root). Tests already use `PROJECT_ROOT`, so their behavior is unchanged.
+
 ## Part 2 — Implemented (2026-09-30)
 
 - `configs/project.yaml`: `ccaa.path`, `ccaa.years_window: 3` (comments explain the window and the NaN-not-0 rule).
@@ -63,16 +83,28 @@ Pipeline order (as decided in the 09-28 session, now being applied): **merge →
 - Verified: `pytest tests/test_ccaa.py` **16 passed**; `mypy src/` back to **14 errors** (baseline — pandas import uses `# type: ignore[import-untyped]` like `weather_batch.py`); `ruff check`/`format` clean on touched files (32 ruff errors elsewhere = pre-existing).
 - Smoke-checked vs real data: Andalucía/2024 → prev 319.0 (84+110+125), ext 322.0 (91+113+118) ✓.
 
-## Weather Batch Run State (absorbed from 09-28)
+## Part 3 — Implemented (2026-09-30)
 
-- **Resume = 5,000 / 47,505 rows** in `firms_spain_enriched_partial.csv` (to be renamed in Part 3). Log: `logs/weather_batch.log`.
-- Last run stopped cleanly on the **daily** limit (`Status: daily_stop`, 2026-09-28 18:07); hourly-limit auto-wait worked (105 s). ~94 batches remain at `batch_interval_seconds: 450`; restart = re-run the script.
+- `weather_batch.py`:
+  - `PARTIAL_CSV` renamed → `firms_spain_weather_partial.csv` (file moved on disk; live resume kept working — was 5,000 at session start, **25,500** when Part 3 landed, i.e. the download has been running in parallel).
+  - New `WEATHER_COMPLETE_CSV` → `firms_spain_weather.csv`.
+  - New `load_weather_for_clc(complete_path, partial_path)` — contract of notebook cell 3: completed file if exists (verbatim), else partial filtered to rows with `temperature_2m`; no weather at all → `RuntimeError` telling the user to run the Open-Meteo step (paths are parameters so tests never touch the real CSVs).
+  - New `finalize_weather_csv(partial_path, complete_path)` — copy (not move: the partial stays the resume point) only when `find_resume_row == len(df)`; returns the path, `None` if incomplete (creates nothing), no-op if the completed file already exists (idempotent), `FileNotFoundError` if the partial is missing.
+- `scripts/enrich_weather_batch.py`: on `WeatherBatchStatus.COMPLETE` → calls `finalize_weather_csv()` and prints the published path; docstring updated. Exit codes unchanged.
+- `enrichment/__init__.py`: `finalize_weather_csv`, `load_weather_for_clc` exported (`__all__` still sorted).
+- Tests: +8 in `test_weather_batch.py` (`TestLoadWeatherForClc`, `TestFinalizeWeatherCsv`) using the new `_weather_csv` helper — completed-wins, partial-filtered, no-column/all-NaN errors, copy-when-complete, incomplete→None, idempotent sentinel, missing-partial error.
+- Verified: **270 passed, 2 deselected**; `mypy src/` = 14 (baseline); ruff/format clean on touched files.
+
+## Weather Batch Run State (absorbed from 09-28, updated 2026-09-30)
+
+- **Resume = 25,500 / 47,505 rows** in `firms_spain_weather_partial.csv` (renamed from `firms_spain_enriched_partial.csv`; 5,000 at session start → download running in parallel). Log: `logs/weather_batch.log`.
+- 09-28 run stopped cleanly on the **daily** limit (`daily_stop`); hourly-limit auto-wait worked (105 s). Remaining ~44 batches at `batch_interval_seconds: 450`; restart = re-run the script (which now also publishes `firms_spain_weather.csv` on completion).
 - `data/processed/openmeteo_response.json` holds only the last batch (overwritten per batch).
 - Old production path `weather_enrichment.py` (1 HTTP call/row) still exists, superseded by `weather_batch.py`.
 
 ## Test Suite Status
 
-- **262 passed, 2 deselected** (`-m "not integration"`) after Part 2 (2026-09-30). Baseline 214 (09-28) + 32 from the weather-batch promotion (already in the tree) + 16 new `test_ccaa`.
+- **270 passed, 2 deselected** (`-m "not integration"`) after Part 3 (2026-09-30). Baseline 214 (09-28) + 32 weather-batch promotion + 16 `test_ccaa` (Part 2) + 8 weather loader/finalizer (Part 3).
 - Still open: `integration` marker unregistered (`PytestUnknownMarkWarning`); real-data tests unmarked (`test_firms.py::TestLoadFirms`, `test_confidence.py::TestAgainstRealData`, `test_validation.py::TestAgainstRealData`); `_make_firms_df` duplicated across 3 files (now + helpers in `test_ccaa.py`, named differently).
 
 ## Carried-Over Open Items (from 09-28 and earlier)

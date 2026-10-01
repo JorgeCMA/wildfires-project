@@ -21,8 +21,10 @@ from wildfire.enrichment.weather_batch import (
     WeatherBatchStatus,
     classify_rate_limit,
     estimate_weight_range,
+    finalize_weather_csv,
     find_resume_row,
     intersect_weight_ranges,
+    load_weather_for_clc,
     pacing_advice,
     run_weather_enrichment,
     seconds_until_reset,
@@ -363,3 +365,95 @@ class TestRunWeatherEnrichment:
         assert fetch.calls["calls"] == 2
         assert sleeps == []
         assert find_resume_row(pd.read_csv(csv)) == 2
+
+
+# ---------------------------------------------------------------------------
+# Celda 3 del notebook: load_weather_for_clc + finalize_weather_csv
+# ---------------------------------------------------------------------------
+
+
+def _weather_csv(path: Path, rows: int, filled: int) -> Path:
+    """CSV con las primeras ``filled`` de ``rows`` filas con temperature_2m."""
+    df = pd.DataFrame(
+        {
+            "latitude": [40.0] * rows,
+            "temperature_2m": [10.0] * filled + [float("nan")] * (rows - filled),
+        }
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(path, index=False)
+    return path
+
+
+class TestLoadWeatherForClc:
+    """Terminado si existe; si no, parcial filtrado a filas con clima."""
+
+    def test_completed_wins_over_partial(self, tmp_path):
+        completed = _weather_csv(tmp_path / "weather.csv", rows=4, filled=4)
+        _weather_csv(tmp_path / "weather_partial.csv", rows=6, filled=2)
+
+        out = load_weather_for_clc(completed, tmp_path / "weather_partial.csv")
+
+        assert len(out) == 4  # el parcial completo se ignora
+        assert out["temperature_2m"].notna().all()
+
+    def test_falls_back_to_partial_and_filters_unfilled(self, tmp_path):
+        partial = _weather_csv(tmp_path / "weather_partial.csv", rows=6, filled=4)
+        missing = tmp_path / "weather.csv"
+
+        out = load_weather_for_clc(missing, partial)
+
+        assert len(out) == 4  # solo las filas ya descargadas
+        assert out["temperature_2m"].notna().all()
+        # conserva el orden original del parcial
+        assert out["latitude"].tolist() == [40.0] * 4
+
+    def test_no_weather_column_raises(self, tmp_path):
+        partial = _make_csv(tmp_path, rows=3)  # columnas FIRMS sin clima
+        missing = tmp_path / "weather.csv"
+
+        with pytest.raises(RuntimeError, match="Open-Meteo step"):
+            load_weather_for_clc(missing, partial)
+
+    def test_all_rows_unfilled_raises(self, tmp_path):
+        partial = _weather_csv(tmp_path / "weather_partial.csv", rows=3, filled=0)
+        missing = tmp_path / "weather.csv"
+
+        with pytest.raises(RuntimeError, match="Open-Meteo step"):
+            load_weather_for_clc(missing, partial)
+
+
+class TestFinalizeWeatherCsv:
+    """Copia parcial→terminado solo cuando la reanudación está al final."""
+
+    def test_copies_when_partial_is_complete(self, tmp_path):
+        partial = _weather_csv(tmp_path / "weather_partial.csv", rows=3, filled=3)
+        completed = tmp_path / "weather.csv"
+
+        result = finalize_weather_csv(partial, completed)
+
+        assert result == completed
+        pd.testing.assert_frame_equal(pd.read_csv(completed), pd.read_csv(partial))
+
+    def test_incomplete_partial_creates_nothing(self, tmp_path):
+        partial = _weather_csv(tmp_path / "weather_partial.csv", rows=6, filled=4)
+        completed = tmp_path / "weather.csv"
+
+        result = finalize_weather_csv(partial, completed)
+
+        assert result is None
+        assert not completed.exists()
+
+    def test_idempotent_when_completed_exists(self, tmp_path):
+        partial = _weather_csv(tmp_path / "weather_partial.csv", rows=3, filled=3)
+        completed = _weather_csv(tmp_path / "weather.csv", rows=3, filled=3)
+        completed.write_text("sentinel\n", encoding="utf-8")
+
+        result = finalize_weather_csv(partial, completed)
+
+        assert result == completed
+        assert completed.read_text(encoding="utf-8") == "sentinel\n"  # sin copia
+
+    def test_missing_partial_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError, match="Partial CSV not found"):
+            finalize_weather_csv(tmp_path / "nope.csv", tmp_path / "weather.csv")

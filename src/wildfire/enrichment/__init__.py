@@ -15,6 +15,8 @@ from .merge_sensors import (
 from .weather_batch import (
     WeatherBatchStatus,
     fetch_next_batch,
+    finalize_weather_csv,
+    load_weather_for_clc,
     run_weather_enrichment,
 )
 from .weather_enrichment import enrich_with_weather, save_weather_enriched
@@ -26,8 +28,10 @@ __all__ = [
     "enrich_with_clc",
     "enrich_with_weather",
     "fetch_next_batch",
+    "finalize_weather_csv",
     "load_enriched",
     "load_merged",
+    "load_weather_for_clc",
     "merge_viirs_modis",
     "run_weather_enrichment",
     "save_enriched",
