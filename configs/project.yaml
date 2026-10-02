@@ -98,6 +98,18 @@ ccaa:
   # Años fuera del rango del fichero (2020-2025) no aportan nada;
   # ventana sin ningún año disponible → NaN (nunca 0).
   years_window: 3
+  # Límites de las Comunidades Autónomas (GeoJSON subido por el equipo).
+  # CCAA boundaries (team-provided GeoJSON). Relativo a PROJECT_ROOT;
+  # un valor absoluto también vale (Path / absoluto → absoluto).
+  boundaries_path: "data/raw/ccaa/spain-communities.geojson"
+  # Campo del GeoJSON con el nombre de la región. Sus valores se traducen a
+  # los nombres EXACTOS del CSV de presupuestos con REGION_NAME_MAP
+  # (geo/regions.py), p. ej. "Castilla-Leon" → "Castilla y León".
+  boundaries_name_field: "name"
+  # Respaldo en metros para puntos sin polígono que los contenga
+  # (costa / frontera PT-FR): sjoin_nearest con esta distancia máxima.
+  # Más lejos → ccaa NaN (y luego sumas NaN). Sin respaldo: 0.
+  nearest_max_distance_m: 2000
 
 output:
   merged: data/processed/merged
