@@ -3,7 +3,8 @@
 Replaces `compact/2026-09-28_openmeteo-batch-weather.md` (its open items are absorbed into *Carried-Over Open Items* below).
 
 > **FINALIZED 2026-10-02.** All actionable parts landed (see *Session 2026-10-02* at the
-> bottom); Part 6 stays open pending the boundaries-source decision.
+> bottom); Part 6 stays open pending the boundaries-source decision. Session summary:
+> `compact/2026-10-02_parts4-8-finalizacion.md`.
 
 ## Status by Part
 
