@@ -206,12 +206,15 @@ def test_fetch_next_batch_saves_response(tmp_path):
     batch = next_batch(load_partial_or_merged(csv_path))
     assert 0 < len(batch) <= batch_rows
 
-    # Corta tras JSON + CSV (ambos por defecto: OUTPUT_JSON / tmp aquí)
-    assert fetch_next_batch(csv_path=csv_path) is None
+    # Corta tras JSON + CSV (ambos por defecto: OUTPUT_JSON / tmp aquí).
+    # save_path explícito: por defecto escribiría en el JSON rastreado
+    # data/processed/openmeteo_response.json.
+    save_path = tmp_path / "response.json"
+    assert fetch_next_batch(csv_path=csv_path, save_path=save_path) is None
 
     # La respuesta HTTP queda guardada en JSON para reutilizarla después
-    assert OUTPUT_JSON.exists()
-    payload = json.loads(OUTPUT_JSON.read_text(encoding="utf-8"))
+    assert save_path.exists()
+    payload = json.loads(save_path.read_text(encoding="utf-8"))
     url, params = build_batch_request(batch)
     assert payload["row_start"] == 0
     assert payload["url"] == url

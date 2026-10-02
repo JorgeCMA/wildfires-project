@@ -118,7 +118,7 @@ class TestResolveNeighbor:
             "E31N20", 0, 5000, -1, 0,
             tile_height=self.TILE_H, tile_width=self.TILE_W,
         )
-        assert tile == "E31N19"
+        assert tile == "E31N21"
         assert row == 9999
 
     def test_cross_south_boundary(self):
@@ -126,7 +126,7 @@ class TestResolveNeighbor:
             "E31N20", 9999, 5000, 1, 0,
             tile_height=self.TILE_H, tile_width=self.TILE_W,
         )
-        assert tile == "E31N21"
+        assert tile == "E31N19"
         assert row == 0
 
     def test_cross_west_boundary(self):
@@ -150,7 +150,7 @@ class TestResolveNeighbor:
             "E31N20", 1, 5000, -2, 0,
             tile_height=self.TILE_H, tile_width=self.TILE_W,
         )
-        assert tile == "E31N19"
+        assert tile == "E31N21"
         assert row == 9999
 
     def test_ring3_south_offset(self):
@@ -158,7 +158,7 @@ class TestResolveNeighbor:
             "E31N20", 9998, 5000, 2, 0,
             tile_height=self.TILE_H, tile_width=self.TILE_W,
         )
-        assert tile == "E31N21"
+        assert tile == "E31N19"
         assert row == 0
 
     def test_ring3_west_offset(self):
@@ -191,7 +191,7 @@ class TestResolveNeighbor:
             "E31N20", 0, 0, -1, -1,
             tile_height=self.TILE_H, tile_width=self.TILE_W,
         )
-        assert tile == "E30N19"
+        assert tile == "E30N21"
         assert row == 9999
         assert col == 9999
 
@@ -200,7 +200,7 @@ class TestResolveNeighbor:
             "E31N20", 0, 0, -1, 0,
             tile_height=5000, tile_width=5000,
         )
-        assert tile == "E31N19"
+        assert tile == "E31N21"
         assert row == 4999
 
     def test_tile_key_parsing(self):

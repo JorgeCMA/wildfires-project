@@ -137,9 +137,12 @@ def _resolve_neighbor(
     n = int(tile_key[tile_key.index("N") + 1:])
 
     if raw_row < 0:
-        n -= 1
-    elif raw_row >= tile_height:
+        # Row 0 is the tile's north edge and the N key grows northward
+        # (E31N21's bounds are north of E31N20's), so leaving through the
+        # top edge moves into the *higher* N tile at its last row.
         n += 1
+    elif raw_row >= tile_height:
+        n -= 1
 
     if raw_col < 0:
         e -= 1
