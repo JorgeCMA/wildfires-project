@@ -16,6 +16,7 @@ from wildfire.enrichment.clc_enrichment import (
     _pixel_value,
     _resolve_neighbor,
     enrich_with_clc,
+    save_enriched,
 )
 
 
@@ -433,6 +434,63 @@ class TestEnrichWithClc:
         result = enrich_with_clc(df)
         for suffix in ["N", "S", "W", "E"]:
             assert f"clc_class_{suffix}" in result.columns
+
+
+# ---------------------------------------------------------------------------
+# save_enriched
+# ---------------------------------------------------------------------------
+
+class TestSaveEnriched:
+    """``save_enriched`` output naming and PROJECT_ROOT anchoring."""
+
+    @staticmethod
+    def _df() -> pd.DataFrame:
+        return pd.DataFrame({"latitude": [40.4], "longitude": [-3.7]})
+
+    @staticmethod
+    def _cfg(tmp_path: Path) -> dict:
+        # Absolute config value wins over PROJECT_ROOT (Path.__truediv__),
+        # so the test writes inside tmp_path and never touches real data.
+        return {"output": {"enriched": str(tmp_path)}}
+
+    @patch("wildfire.enrichment.clc_enrichment.load_config")
+    def test_default_filename(self, mock_cfg, tmp_path):
+        mock_cfg.return_value = self._cfg(tmp_path)
+        path = save_enriched(self._df())
+        assert path == tmp_path / "firms_spain_enriched.csv"
+        assert path.exists()
+
+    @patch("wildfire.enrichment.clc_enrichment.load_config")
+    def test_year_filename(self, mock_cfg, tmp_path):
+        mock_cfg.return_value = self._cfg(tmp_path)
+        path = save_enriched(self._df(), year=2023)
+        assert path == tmp_path / "firms_spain_2023_enriched.csv"
+        assert path.exists()
+
+    @patch("wildfire.enrichment.clc_enrichment.load_config")
+    def test_explicit_filename_wins(self, mock_cfg, tmp_path):
+        mock_cfg.return_value = self._cfg(tmp_path)
+        path = save_enriched(
+            self._df(), country="Spain", year=2023,
+            filename="firms_spain_weather_clc.csv",
+        )
+        assert path == tmp_path / "firms_spain_weather_clc.csv"
+        assert path.exists()
+        assert not (tmp_path / "firms_spain_2023_enriched.csv").exists()
+
+    @patch("wildfire.enrichment.clc_enrichment.load_config")
+    def test_anchored_to_project_root_when_relative(self, mock_cfg):
+        # Relative config value resolves under the repo root, not the cwd.
+        from wildfire.config import PROJECT_ROOT
+
+        mock_cfg.return_value = {"output": {"enriched": "data/processed/enriched"}}
+        probe = PROJECT_ROOT / "data/processed/enriched/unit_test_anchored.csv"
+        try:
+            path = save_enriched(self._df(), filename="unit_test_anchored.csv")
+            assert path == probe
+            assert path.exists()
+        finally:
+            probe.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------

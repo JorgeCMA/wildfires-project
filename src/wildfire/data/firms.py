@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from wildfire.config import load_config
+from wildfire.config import PROJECT_ROOT, load_config
 
 VIIRS_COLUMNS = {
     "latitude": float,
@@ -58,7 +58,6 @@ SENSOR_FOLDER_NAMES = {
 
 def _firms_dir(country: str, year: int, sensor: str) -> Path:
     """Build the directory path for a FIRMS sensor/year/country."""
-    from wildfire.config import PROJECT_ROOT
     config = load_config()
     sensor_path = SENSOR_FOLDER_NAMES.get(sensor.lower(), sensor)
     return PROJECT_ROOT / config["data"]["raw"] / "firms" / country / str(year) / sensor_path
@@ -180,7 +179,7 @@ def list_available_firms(country: str = "Spain") -> list[dict[str, str | int]]:
         Each dict has keys ``country``, ``year``, ``sensor``, ``path``.
     """
     config = load_config()
-    base_dir = Path(config["data"]["raw"]) / "firms" / country
+    base_dir = PROJECT_ROOT / Path(config["data"]["raw"]) / "firms" / country
     results: list[dict[str, str | int]] = []
 
     if not base_dir.exists():

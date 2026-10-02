@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from wildfire.config import load_config
+from wildfire.config import PROJECT_ROOT, load_config
 from wildfire.data.openmeteo import fetch_weather
 
 
@@ -110,7 +110,7 @@ def save_weather_enriched(
         Path to the saved CSV file.
     """
     config = load_config()
-    out_dir = Path(config["output"]["enriched"])
+    out_dir = PROJECT_ROOT / Path(config["output"]["enriched"])
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if year is not None:

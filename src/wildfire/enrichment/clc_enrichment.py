@@ -10,7 +10,7 @@ import pandas as pd
 import rasterio
 from pyproj import Transformer
 
-from wildfire.config import load_config
+from wildfire.config import PROJECT_ROOT, load_config
 from wildfire.data.clc import list_clc_tiles
 
 
@@ -316,7 +316,12 @@ def enrich_with_clc(
     return df
 
 
-def save_enriched(df: pd.DataFrame, country: str = "Spain", year: int | None = None) -> Path:
+def save_enriched(
+    df: pd.DataFrame,
+    country: str = "Spain",
+    year: int | None = None,
+    filename: str | None = None,
+) -> Path:
     """Save enriched FIRMS data to ``data/processed/enriched/``.
 
     Parameters
@@ -327,6 +332,11 @@ def save_enriched(df: pd.DataFrame, country: str = "Spain", year: int | None = N
         Country name.
     year:
         If provided, save as ``firms_{country}_{year}_enriched.csv``.
+    filename:
+        Explicit output filename inside ``data/processed/enriched/``.
+        Takes precedence over ``country``/``year``; use it to write a
+        named stage of the pipeline (e.g.
+        ``firms_spain_weather_clc.csv``).
 
     Returns
     -------
@@ -334,13 +344,14 @@ def save_enriched(df: pd.DataFrame, country: str = "Spain", year: int | None = N
         Path to the saved CSV file.
     """
     config = load_config()
-    out_dir = Path(config["output"]["enriched"])
+    out_dir = PROJECT_ROOT / Path(config["output"]["enriched"])
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if year is not None:
-        filename = f"firms_{country.lower()}_{year}_enriched.csv"
-    else:
-        filename = f"firms_{country.lower()}_enriched.csv"
+    if filename is None:
+        if year is not None:
+            filename = f"firms_{country.lower()}_{year}_enriched.csv"
+        else:
+            filename = f"firms_{country.lower()}_enriched.csv"
 
     path = out_dir / filename
     df.to_csv(path, index=False)
@@ -367,7 +378,7 @@ def load_enriched(country: str = "Spain", year: int | None = None) -> pd.DataFra
         If the enriched CSV file does not exist.
     """
     config = load_config()
-    out_dir = Path(config["output"]["enriched"])
+    out_dir = PROJECT_ROOT / Path(config["output"]["enriched"])
 
     if year is not None:
         filename = f"firms_{country.lower()}_{year}_enriched.csv"

@@ -376,7 +376,9 @@ def fetch_next_batch(
     # re-ejecuciones del mismo lote no vuelven a gastar la API (que limita a
     # ~100 peticiones/minuto y responde 429 si se pasa)
     session = requests_cache.CachedSession(
-        ".cache", expire_after=3600, allowable_methods=("GET", "POST")
+        str(PROJECT_ROOT / ".cache"),
+        expire_after=3600,
+        allowable_methods=("GET", "POST"),
     )
     session = retry(session, retries=5, backoff_factor=0.2)
     openmeteo = openmeteo_requests.Client(session=session)
