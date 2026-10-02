@@ -2,7 +2,8 @@
 
 Replaces `compact/2026-09-28_openmeteo-batch-weather.md` (its open items are absorbed into *Carried-Over Open Items* below).
 
-> **DRAFT — written up front for this session.** Status per part is updated as the parts land; Part 8 finalizes this file.
+> **FINALIZED 2026-10-02.** All actionable parts landed (see *Session 2026-10-02* at the
+> bottom); Part 6 stays open pending the boundaries-source decision.
 
 ## Status by Part
 
@@ -11,11 +12,11 @@ Replaces `compact/2026-09-28_openmeteo-batch-weather.md` (its open items are abs
 | 1 | This compact (draft + absorb 09-28) | ✅ |
 | 2 | `ccaa:` config + `data/ccaa.py` + tests | ✅ |
 | 3 | Weather loader/finalizer + partial rename + script | ✅ |
-| 4 | `save_enriched(filename=…)` + **scope B: `PROJECT_ROOT`-anchor all 7 cwd-relative path sites** | 🔄 in progress |
-| 5 | Notebook cells 1–5 (weather commented, CLC, sealed TODO) | ⬜ |
-| 6 | Geopandas `assign_ccaa` + notebook cell 6 + final CSV | ⬜ (paused on boundaries-source question) |
-| 7 | Full verification (ruff/mypy/pytest + notebook run) | ⬜ |
-| 8 | Finalize this compact + AGENTS.md update | ⬜ |
+| 4 | `save_enriched(filename=…)` + **scope B: `PROJECT_ROOT`-anchor all 7 cwd-relative path sites** | ✅ (2026-10-02) |
+| 5 | Notebook cells 1–5 (weather commented, CLC, sealed TODO) | ✅ (2026-10-02) |
+| 6 | Geopandas `assign_ccaa` + notebook cell 6 + final CSV | 🔄 cell 6 added **sealed**; boundaries source still undecided |
+| 7 | Full verification (ruff/mypy/pytest + notebook run) | ✅ (2026-10-02) |
+| 8 | Finalize this compact + AGENTS.md update | ✅ (2026-10-02) |
 
 ## Context / Goal
 
@@ -60,8 +61,8 @@ Pipeline order (as decided in the 09-28 session, now being applied): **merge →
 
 ## Medium-Importance Issues (elaborated 2026-09-30; NOT in TODO — light issues went to TODO.md)
 
-1. **Integration tests quota-flaky**: `test_openmeteo.py:149` (plain uncached `requests.get`, can't be cached as written) + `test_openmeteo_requests.py:198` (POST, cached but a miss costs a real 500-row/weight-700 call = ~7% of daily budget). Both fail whenever the download has spent the quota (today). Hidden side effect: the POST test's `save_path` defaults to `OUTPUT_JSON` → **overwrites the tracked `openmeteo_response.json`**. Fix direction: register marker + `addopts = "-m 'not integration'"` + skip-on-429 + `session=` param for `fetch_weather` + `save_path=tmp_path` in the test.
-3. *(numbering as originally listed)* **Notebook tooling absent**: only `ipykernel`/`ipython`/`jupyter_client` installed — no `nbformat`/`nbconvert`/`nbclient`, so no `nbformat.validate()` and no headless execution (Part 7 acceptance check needs it). Root cause found alongside: **cwd-relative save/load helpers** (see Part 4 scope B) already produced a 5.3 MB duplicate at `notebooks/data/processed/merged/` (written 29-Sep 11:53).
+1. **Integration tests quota-flaky**: `test_openmeteo.py:149` (plain uncached `requests.get`, can't be cached as written) + `test_openmeteo_requests.py:198` (POST, cached but a miss costs a real 500-row/weight-700 call = ~7% of daily budget). Both fail whenever the download has spent the quota (today). Hidden side effect: the POST test's `save_path` defaults to `OUTPUT_JSON` → **overwrites the tracked `openmeteo_response.json`**. Fix direction: register marker + `addopts = "-m 'not integration'"` + skip-on-429 + `session=` param for `fetch_weather` + `save_path=tmp_path` in the test. — **Landed 2026-10-02**: marker + addopts + `save_path=tmp_path`; skip-on-429 still open.
+3. *(numbering as originally listed)* **Notebook tooling absent**: only `ipykernel`/`ipython`/`jupyter_client` installed — no `nbformat`/`nbconvert`/`nbclient`, so no `nbformat.validate()` and no headless execution (Part 7 acceptance check needs it). Root cause found alongside: **cwd-relative save/load helpers** (see Part 4 scope B) already produced a 5.3 MB duplicate at `notebooks/data/processed/merged/` (written 29-Sep 11:53). — **Resolved 2026-10-02**: `nbformat`/`nbclient` in dev extras, full headless run passed, `notebooks/data/` deleted and did not reappear.
 2. **Large generated data in git**: `cff00a5` carried 317k JSON lines + 7.9k CSV lines of regenerated data; every weather batch rewrites both tracked artifacts → repo bloat. Needs a tracking policy.
 4. **README drift**: documents the old CLC→weather order, non-existent `geo/` module, English notebook names (`00_master.ipynb` vs `00_introduccion.ipynb`), mangled script-list comments.
 
@@ -95,27 +96,74 @@ Pipeline order (as decided in the 09-28 session, now being applied): **merge →
 - Tests: +8 in `test_weather_batch.py` (`TestLoadWeatherForClc`, `TestFinalizeWeatherCsv`) using the new `_weather_csv` helper — completed-wins, partial-filtered, no-column/all-NaN errors, copy-when-complete, incomplete→None, idempotent sentinel, missing-partial error.
 - Verified: **270 passed, 2 deselected**; `mypy src/` = 14 (baseline); ruff/format clean on touched files.
 
-## Weather Batch Run State (absorbed from 09-28, updated 2026-09-30)
+## Weather Batch Run State (absorbed from 09-28, updated 2026-10-02)
 
-- **Resume = 25,500 / 47,505 rows** in `firms_spain_weather_partial.csv` (renamed from `firms_spain_enriched_partial.csv`; 5,000 at session start → download running in parallel). Log: `logs/weather_batch.log`.
-- 09-28 run stopped cleanly on the **daily** limit (`daily_stop`); hourly-limit auto-wait worked (105 s). Remaining ~44 batches at `batch_interval_seconds: 450`; restart = re-run the script (which now also publishes `firms_spain_weather.csv` on completion).
+- **Resume = 32,500 / 47,505 rows** in `firms_spain_weather_partial.csv` (partial last written
+  2026-10-01 14:46; the run stopped cleanly on the **daily** limit at 18:07). ~30 batches left;
+  quota resets daily → restart = re-run `python scripts/enrich_weather_batch.py` (exit 0
+  publishes `firms_spain_weather.csv` via `finalize_weather_csv`). Log: `logs/weather_batch.log`.
 - `data/processed/openmeteo_response.json` holds only the last batch (overwritten per batch).
 - Old production path `weather_enrichment.py` (1 HTTP call/row) still exists, superseded by `weather_batch.py`.
 
-## Test Suite Status
+## Session 2026-10-02 — Parts 4, 5, 6(sealed), 7, 8
 
-- **270 passed, 2 deselected** (`-m "not integration"`) after Part 3 (2026-09-30). Baseline 214 (09-28) + 32 weather-batch promotion + 16 `test_ccaa` (Part 2) + 8 weather loader/finalizer (Part 3).
-- Still open: `integration` marker unregistered (`PytestUnknownMarkWarning`); real-data tests unmarked (`test_firms.py::TestLoadFirms`, `test_confidence.py::TestAgainstRealData`, `test_validation.py::TestAgainstRealData`); `_make_firms_df` duplicated across 3 files (now + helpers in `test_ccaa.py`, named differently).
+Commits: `d314486` (Part 3 checkpoint) → `d199654` (Part 4) → `e6297cc` (fixes) →
+`7fcbe3f` (cells 2–5) → `4abd64d` (cell 6 sealed) → `1410fd3` (nbformat/nbclient) → docs commit.
+
+- **Part 4 — PROJECT_ROOT anchoring (7 sites)**: `merge_sensors.save_merged/load_merged`,
+  `clc_enrichment.save_enriched/load_enriched`, `weather_enrichment.save_weather_enriched`,
+  `firms.list_available_firms`, `weather_batch` `CachedSession(".cache")`. All are
+  `PROJECT_ROOT / Path(config[...])` (absolute config values still win → tmp_path tests unaffected).
+  `save_enriched(df, country, year, filename: str | None = None)` — explicit name wins, `None`
+  keeps the legacy name; +4 tests (`TestSaveEnriched`). Orphaned `notebooks/data/` (5.1 MB)
+  deleted. Verified from a non-repo cwd: `list_available_firms`/`load_merged` resolve to repo root.
+- **Fix — `_resolve_neighbor` N/S inversion**: row<0 crossed to `n−1` and row≥H to `n+1`
+  (backwards: row 0 is the north edge and the N key grows northward — E31N21's bounds are north
+  of E31N20's). Fixed + flipped the **6 test assertions that encoded the bug**
+  (`test_cross_north/south_boundary`, `test_ring3_north/south_offset`,
+  `test_diagonal_northwest_at_origin`, `test_custom_tile_size`). Independently verified against
+  real rasterio indexing on 7 boundary crossings (N/S/E/W, NW diagonal, ring-3 N/S): all OK.
+  Blast radius was 11/47,505 rows on the N/S edge bands.
+- **Fix — pytest markers**: `pyproject.toml` gains `[tool.pytest.ini_options]` with the
+  `integration` marker registered and `addopts = "-m 'not integration'"` (CLI `-m` still
+  overrides). The integration POST test now writes to `tmp_path` instead of the tracked
+  `openmeteo_response.json`. `PytestUnknownMarkWarning` gone.
+- **Part 5 — notebook cells 2–5**: Celda 2 fully commented (run
+  `python scripts/enrich_weather_batch.py` externally; resume/429/exit codes documented,
+  inert snippet); Celda 3 `load_weather_for_clc` + prints; Celda 4 `enrich_with_clc` →
+  `save_enriched(filename="firms_spain_weather_clc.csv")` + `clc_class` value_counts;
+  Celda 5 sealed ES/EN TODO (drop `clc_class == 1`?). Comments bilingual, cells orchestrate only.
+- **Part 6 — sealed**: Celda 6 documents `assign_ccaa` → `add_ccaa_budget_sums` →
+  `firms_spain_final.csv` and the missing `geo/regions.py` + `ccaa.boundaries_path`; no code
+  until the team picks a boundaries source (nothing suitable in `data/raw/` today).
+- **Part 7 — verification**: `nbformat`/`nbclient` added to `[dev]` extras;
+  `nbformat.validate()` OK. Full headless run (nbclient, **cwd = `notebooks/`**, executed copy
+  in temp): Celda 1 → 47,505×22 at repo root (byte-identical, no git diff), Celda 3 →
+  32,500×37 (15/15 vars, 0 NaN), Celda 4 → 32,500×47 and stage CSV
+  `firms_spain_weather_clc.csv` (11.2 MB, **untracked**), Celda 2/5/6 inert,
+  `notebooks/data/` did **not** reappear. Sweeps: 274 passed + 2 deselected (no warnings),
+  ruff 38 / format 17 / mypy 14 — exact baselines; `-m integration` collects 2/276.
+- **Part 8 — docs**: AGENTS.md rewritten (276/274 counts, marker/addopts, new modules
+  `data/ccaa.py` + `enrichment/weather_batch.py`, pipeline order, CSV chain, PROJECT_ROOT note,
+  real-data test inventory, `_resolve_neighbor` fix); this compact finalized.
 
 ## Carried-Over Open Items (from 09-28 and earlier)
 
-1. Finish weather data: remaining ~94 batches via `scripts/enrich_weather_batch.py` (Part 3 makes it write the completed file).
-2. Register pytest markers in `pyproject.toml`.
-3. Decide tracking/gitignore for untracked data artifacts (partial CSV, `openmeteo_response.json`).
-4. Permanent `skipif`-guarded validation battery (09-28 report was one-off).
-5. Update `AGENTS.md` (test counts, new modules, partial rename, pipeline order) — Part 8.
-6. Old en route leftovers: `versioning/catalog.yaml` checksums, prediction target definition, git branching strategy (TODO.md).
-7. Uncommitted tree at session start (before this session's edits): modified `project.yaml`, `01_*.ipynb`, `enrichment/__init__.py`, `tests/test_openmeteo_requests.py`; untracked `weather_batch.py`, `test_weather_batch.py`, `scripts/enrich_weather_batch.py`, `scripts/probe_openmeteo_weight.py`, `logs/`, `notebooks/data/`, this compact.
+1. **Finish weather data**: remaining ~30 batches via `scripts/enrich_weather_batch.py`
+   (Part 3 makes it publish `firms_spain_weather.csv`); then re-run notebook Celda 4 so the
+   stage CSV covers all 47,505 rows. *This gates the final dataset.*
+2. **Boundaries source decision (Part 6 / Celda 6)**: pick a CCAA boundaries source →
+   `src/wildfire/geo/regions.py` + `ccaa.boundaries_path` → `firms_spain_final.csv`.
+3. Decide tracking/gitignore for large generated data (partial CSV, `openmeteo_response.json`,
+   `firms_spain_weather_clc.csv`) — every weather batch rewrites tracked artifacts.
+4. README drift (old CLC→weather order, non-existent `geo/`, English notebook names) +
+   `build_dataset.py` filename mismatch (expects `firms_{country}_{year}_enriched.csv`,
+   superseded by the stage-naming chain).
+5. Permanent `skipif`-guarded validation battery (09-28 report was one-off); skip-on-429 for
+   the integration tests (marker registration + tmp_path already landed).
+6. Old leftovers: `versioning/catalog.yaml` checksums, prediction target definition,
+   git branching strategy (TODO.md), ruff/mypy baseline cleanup (38/14).
+7. Team decision (Celda 5): drop `clc_class == 1` ("Sealed") rows?
 
 ## Key File References
 
