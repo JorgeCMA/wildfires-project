@@ -28,6 +28,8 @@ dev = [
     "mypy",
     "ruff",
     "ipykernel",
+    "nbformat",
+    "nbclient",
 ]
 
 [tool.setuptools.packages.find]
