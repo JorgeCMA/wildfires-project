@@ -6,7 +6,7 @@
 # Install (requires GDAL/system libs for rasterio/geopandas)
 pip install -e ".[dev]"    # dev extras: pytest, mypy, ruff, ipykernel, nbformat, nbclient
 
-# Tests (276 total; 274 run by default, 2 integration deselected via addopts)
+# Tests (299 total; 297 run by default, 2 integration deselected via addopts)
 pytest tests/                            # default: -m "not integration" (see pyproject)
 pytest -m integration                    # only the 2 real-network tests (spends API quota!)
 pytest tests/test_clc.py                 # single file
@@ -32,7 +32,7 @@ Don't add new ones; wholesale cleanup is tracked in TODO/compact, not done ad ho
 Layered pipeline. Run manually via CLI scripts in `scripts/` or the notebook.
 
 **Pipeline order (since 09-30, differs from README)**: RAW DATA → Sensor Merge →
-Confidence Mapping → **Weather (batched)** → **CLC** → **geopandas/CCAA budgets (TBD)** → Analysis/ML.
+Confidence Mapping → **Weather (batched)** → **CLC** → **geopandas/CCAA budgets** → Analysis/ML.
 
 CSV chain under `data/processed/` — every name denotes its contents, each feeds the next:
 
@@ -40,7 +40,7 @@ CSV chain under `data/processed/` — every name denotes its contents, each feed
 2. `enriched/firms_spain_weather_partial.csv` — +15 weather, resume point (in-progress)
 3. `enriched/firms_spain_weather.csv` — completed weather (written by `finalize_weather_csv`)
 4. `enriched/firms_spain_weather_clc.csv` — + `clc_class`, neighbors, `clc_uniform_surroundings`
-5. `enriched/firms_spain_final.csv` — + `ccaa`, `sum_prevention`, `sum_extinction` (modeling input; not yet produced — blocked on boundaries decision)
+5. `enriched/firms_spain_final.csv` — + `ccaa`, `sum_prevention`, `sum_extinction` (modeling input; 39,500×50 as of 2026-10-02 — re-run Celdas 3→4→6 after the weather download completes for all 47,505 rows)
 
 - `src/wildfire/data/` — FIRMS CSV loading (`firms.py`), CLCPlus tile listing (`clc.py`),
   Open-Meteo single-row client (`openmeteo.py`), regional budget CSV (`ccaa.py`)
@@ -50,6 +50,10 @@ CSV chain under `data/processed/` — every name denotes its contents, each feed
   429 classification/wait, `load_weather_for_clc`/`finalize_weather_csv`),
   `weather_enrichment.py` (**old path**, 1 HTTP GET per row — superseded, kept for back-compat)
 - `src/wildfire/processing/` — confidence mapping, validation (warnings only, never raises)
+- `src/wildfire/geo/` — CCAA boundaries (`regions.py`: `load_boundaries` with
+  `make_valid`, `assign_ccaa` — `within` join in EPSG:3035 + `sjoin_nearest`
+  fallback ≤ `ccaa.nearest_max_distance_m`, keep-first dedupe, `REGION_NAME_MAP`
+  translating GeoJSON names to exact budget names)
 - `configs/project.yaml` — all paths and parameters (no hardcoded paths in source)
 - `configs/confidence_thresholds.yaml` — MODIS↔VIIRS confidence mapping rules
 
@@ -80,6 +84,9 @@ Some tests load actual CSVs from disk — they will fail if data files are missi
 - `test_validation.py::TestAgainstRealData` (3) — same file
 - `test_firms.py::TestLoadFirms/TestLoadAllFirms/TestListAvailableFirms` — needs `data/raw/firms/Spain/2023/`
 - `test_ccaa.py` (5 of 16) — needs `data/raw/ccaa/Datos_CCAA_Presupuesto - Datos y Variables Model.csv`
+- `test_regions.py` (8 of 23) — needs the **untracked** `data/raw/ccaa/spain-communities.geojson`
+  (map/boundaries tests) and the **untracked** `data/processed/enriched/firms_spain_weather_clc.csv`
+  (real-data smoke test); the budget-mapping test uses the tracked budget CSV above
 - `test_openmeteo_requests.py` (7 unmarked) — 3 need `data/processed/merged/firms_spain_merged.csv`;
   4 interpolation tests read the **tracked** `data/processed/openmeteo_response.json`
 
@@ -99,14 +106,15 @@ and `test_clc.py` with different signatures (plus a differently-named variant in
 `notebooks/01_recopilacion_datos_limpieza.ipynb` is the pipeline notebook: one cell per step
 (Celda 1 merge → Celda 2 weather [fully commented, run the script externally] →
 Celda 3 `load_weather_for_clc` → Celda 4 CLC → Celda 5 sealed TODO [drop `clc_class == 1`?]
-→ Celda 6 sealed TODO [geopandas CCAA — boundaries source undecided]).
+→ Celda 6 `assign_ccaa` + `add_ccaa_budget_sums` → `firms_spain_final.csv`).
 Comments are bilingual ES/EN; cells only orchestrate — acquisition logic >5 lines lives in `src/`.
 
 ## Gotchas
 
-- **Missing `src/wildfire/geo/`**: README/TODO document `geo/tiles.py` etc., but the directory
-  does not exist. CLC tile logic lives in `enrichment/clc_enrichment.py`. The future
-  `geo/regions.py` (CCAA boundaries) is blocked on a source decision (notebook Celda 6).
+- **`src/wildfire/geo/` exists since 2026-10-02** (`regions.py`: CCAA boundaries from
+  the team-provided `data/raw/ccaa/spain-communities.geojson`). README/TODO still
+  document a `geo/tiles.py` that was never built — CLC tile logic lives in
+  `enrichment/clc_enrichment.py` (see README drift below).
 
 - **README drift**: README still describes the old CLC→weather order, the non-existent `geo/`
   module, English notebook names (actual: `00_introduccion.ipynb`, …), and mangled script-list
@@ -135,6 +143,10 @@ Comments are bilingual ES/EN; cells only orchestrate — acquisition logic >5 li
 
 - **`tests/conftest.py`** manually manipulates `sys.path` instead of relying on editable install.
 
-- **Weather run state**: `firms_spain_weather_partial.csv` resume = 32,500/47,505 (stopped on
-  the daily limit 2026-10-01). Resume = re-run `python scripts/enrich_weather_batch.py`
-  (exit 0 publishes `firms_spain_weather.csv`).
+- **Weather run state**: `firms_spain_weather_partial.csv` resume = 39,500/47,505 (was
+  32,500/47,505, stopped on the daily limit 2026-10-01; download still Jorge's job).
+  Resume = re-run `python scripts/enrich_weather_batch.py`
+  (exit 0 publishes `firms_spain_weather.csv`). After it completes, re-run notebook
+  Celdas 3→4→6 to refresh `firms_spain_weather_clc.csv` + `firms_spain_final.csv`
+  to all 47,505 rows — no code changes (`load_weather_for_clc` picks the completed
+  file automatically).

@@ -2,6 +2,67 @@
 
 ---
 
+## [ENG] Next Implementations — Instructions for AI models
+
+> **Read this before changing the pipeline.** Context of record: `AGENTS.md`,
+> `compact/2026-09-30_notebook01-pipeline.md`, `compact/2026-10-02_parts4-8-finalizacion.md`.
+> Decisions below are SETTLED (2026-10-02) — do not re-litigate them.
+
+### A. Pipeline order & CSV chain (each file feeds the next)
+
+| # | File (`data/processed/…`) | Produced by | State |
+|---|---|---|---|
+| 1 | `merged/firms_spain_merged.csv` | Celda 1 `merge_viirs_modis` + `save_merged` | ✓ 47,505×22 |
+| 2 | `enriched/firms_spain_weather_partial.csv` | `scripts/enrich_weather_batch.py` (Jorge runs it) | partial 39,500/47,505 |
+| 3 | `enriched/firms_spain_weather.csv` | `finalize_weather_csv` when download completes | pending |
+| 4 | `enriched/firms_spain_weather_clc.csv` | Celda 3 `load_weather_for_clc` → Celda 4 `enrich_with_clc` + `save_enriched(filename=…)` | ✓ 39,500×47 |
+| 5 | `enriched/firms_spain_final.csv` | Celda 6 `assign_ccaa` → `add_ccaa_budget_sums` → `save_enriched(filename=…)` | ✓ 39,500×50 (2026-10-02; refresh to 47,505 after the download) |
+
+Functions live in `src/wildfire/` (`enrichment/merge_sensors.py`, `enrichment/weather_batch.py`,
+`enrichment/clc_enrichment.py`, `data/ccaa.py`); notebook cells only orchestrate.
+Weather download is handled by Jorge — never run `scripts/enrich_weather_batch.py` yourself.
+
+### B. DONE (2026-10-02) — Part 6: notebook Celda 6 unsealed (`assign_ccaa` → final CSV)
+
+Settled decisions: boundaries = user-provided `data/raw/ccaa/spain-communities.geojson`
+(EPSG:4326, 19 features, `Canarias` geometry invalid → `make_valid()`); `within` join first,
+**nearest fallback with cap 2 km** for unmatched (coast/PT-FR border, 99/32,500 today);
+dedupe keep-first (8 border points match 2 polygons); name mapping via explicit 17-entry
+dict to EXACT budget names (`Castilla-Leon`→`Castilla y León`, `Baleares`→`Islas Baleares`,
+`Valencia`→`Comunidad Valenciana`, `Murcia`→`Región de Murcia`, …); `Ceuta`/`Melilla`
+unmapped → budget sums `NaN`; no rows ever dropped.
+
+1. `configs/project.yaml` `ccaa:` += `boundaries_path`, `boundaries_name_field: "name"`,
+   `nearest_max_distance_m: 2000`.
+2. NEW `src/wildfire/geo/__init__.py` + `geo/regions.py` — `REGION_NAME_MAP`,
+   `load_boundaries()` (PROJECT_ROOT-anchored, absolute config value wins),
+   `assign_ccaa(df)` (KeyError on missing lat/lon; join in EPSG:3035; append `ccaa` last).
+3. NEW `tests/test_regions.py` — synthetic polygons (within / border-dedupe / outside→NaN /
+   nearest ≤cap vs >cap), mapping ⊆ real budget regions + all 17 covered,
+   `load_boundaries` errors + real-file smoke, 32,500-row real-data smoke (0 NaN).
+4. Notebook Celda 6: replace commented block with real code →
+   `df_final = add_ccaa_budget_sums(assign_ccaa(df_clc))` →
+   `save_enriched(df_final, filename="firms_spain_final.csv")` + value_counts/NaN prints.
+   **Celda 5 stays sealed** (team decision pending: drop `clc_class == 1`?).
+5. Run notebook headless (nbclient, cwd=`notebooks/`, copy in temp) →
+   `firms_spain_final.csv` **32,500×50** available for analysis now;
+   after the weather download completes, re-run Celda 3→4→6 → 47,505 rows, no code changes.
+6. Docs: `AGENTS.md` — drop the "Missing `src/wildfire/geo/`" gotcha, add `geo/regions.py`.
+   Sweep baselines MUST NOT grow: pytest 276/274 (+new tests), `ruff check` 38,
+   `ruff format --check` 17 files, `mypy src/` 14.
+
+### C. Still open (do NOT pick these up unasked)
+
+- Jorge finishes the weather download (open item 1), then re-run Celdas 3→4→6.
+- Celda 5 decision: drop `clc_class == 1`? (team).
+- ~~Boundaries source decision (open item 2)~~ — resolved 2026-10-02 (team GeoJSON).
+- Git tracking policy for large generated CSVs (open item 3).
+- README drift + `build_dataset.py` mismatch (open item 4); skip-on-429 for integration
+  tests (open item 5); catalog checksums / prediction target / branching / ruff-mypy
+  baseline cleanup (open item 6).
+
+---
+
 ## [ENG] Completed
 
 - [x] Restructure data directories with country/year hierarchy
