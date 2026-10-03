@@ -34,6 +34,12 @@ def merge_viirs_modis(
     if df.empty:
         return df
 
+    problems = validate_firms(df)
+    if problems:
+        print("merge_viirs_modis validation warnings:")
+        for problem in problems:
+            print(f"  - {problem}")
+
     df = add_unified_confidence(df)
     return df
 

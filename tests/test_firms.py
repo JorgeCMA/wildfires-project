@@ -122,6 +122,16 @@ class TestLoadAllFirms:
         sensors = df["sensor"].unique()
         assert len(sensors) >= 2
 
+    def test_missing_year_warns_and_continues(self):
+        with pytest.warns(UserWarning, match="Missing FIRMS data"):
+            df = load_all_firms(country="Spain", years=[2023, 2099])
+        assert not df.empty
+
+    def test_all_missing_returns_empty_with_warning(self):
+        with pytest.warns(UserWarning, match="Missing FIRMS data"):
+            df = load_all_firms(country="Spain", years=[2099], sensors=["modis"])
+        assert df.empty
+
 
 class TestListAvailableFirms:
     def test_list_returns_list(self):

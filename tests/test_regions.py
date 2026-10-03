@@ -175,6 +175,33 @@ class TestAssignCcaaSynthetic:
         assert len(out) == 0
         assert list(out.columns) == ["longitude", "latitude", CCAA_COL]
 
+    def test_nan_coords_shortcircuit_to_nan(self):
+        df = pd.DataFrame(
+            {"longitude": [float("nan"), -3.7], "latitude": [40.5, float("nan")]}
+        )
+        out = assign_ccaa(df, boundaries=_make_boundaries())
+        assert out[CCAA_COL].isna().all()
+
+    def test_duplicate_input_index_not_collapsed(self):
+        df = _make_df([(-3.7, 40.5), (-3.2, 40.5)])
+        df.index = [7, 7]
+        with pytest.warns(UserWarning, match="without budget mapping"):
+            out = assign_ccaa(df, boundaries=_make_boundaries())
+        assert len(out) == 2
+        assert out.index.tolist() == [7, 7]
+        assert out[CCAA_COL].tolist() == ["RegionA", "RegionB"]
+
+    def test_negative_max_distance_raises(self):
+        df = _make_df([(-3.7, 40.5)])
+        with pytest.raises(ValueError, match="max_distance_m"):
+            assign_ccaa(df, boundaries=_make_boundaries(), max_distance_m=-1)
+
+    def test_unmapped_names_warn(self):
+        df = _make_df([(-3.7, 40.5)])
+        with pytest.warns(UserWarning, match="without budget mapping"):
+            out = assign_ccaa(df, boundaries=_make_boundaries())
+        assert out[CCAA_COL].iloc[0] == "RegionA"  # pasa sin traducir
+
 
 class TestAssignCcaaRealData:
     """Sobre firms_spain_weather_clc.csv (32.500 filas) + GeoJSON real."""

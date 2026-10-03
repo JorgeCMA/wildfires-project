@@ -1,17 +1,34 @@
-"""Enrich FIRMS data with Open-Meteo weather data."""
+"""Enrich FIRMS data with Open-Meteo weather data (LEGACY, deprecated).
+
+No lo uses: 1 HTTP GET por fila con 6 variables frente al camino de
+producción (``scripts/enrich_weather_batch.py``: POST de 500 filas, 15
+variables, reanudable). Se conserva por compatibilidad.
+"""
 
 from __future__ import annotations
 
 import argparse
 import sys
+import warnings
 
 from wildfire.enrichment.weather_enrichment import enrich_with_weather, save_weather_enriched
 from wildfire.processing.validation import validate_enriched
 
 
 def main() -> None:
+    warnings.warn(
+        "scripts/enrich_with_weather.py is deprecated: use "
+        "scripts/enrich_weather_batch.py (batched, resumable, 15 vars)",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    print(
+        "WARNING: legacy per-row weather path (deprecated). "
+        "Use scripts/enrich_weather_batch.py instead.",
+        file=sys.stderr,
+    )
     parser = argparse.ArgumentParser(
-        description="Enrich FIRMS data with Open-Meteo historical weather."
+        description="Enrich FIRMS data with Open-Meteo historical weather (LEGACY)."
     )
     parser.add_argument(
         "--country", default="Spain", help="Country name (default: Spain)"

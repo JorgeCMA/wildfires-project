@@ -16,6 +16,7 @@ reintenta el mismo lote (la reanudación por CSV lo hace a prueba de fallos).
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 import time
@@ -75,6 +76,9 @@ def build_row_requests(df: pd.DataFrame) -> list[dict]:
     ``timezone``).
     """
     config = load_config()["openmeteo"]
+    # Copia profunda: sin ella los 500 dicts compartirían la MISMA lista
+    # `hourly` con la config global y cualquier mutación la corrompería.
+    query = copy.deepcopy(config["batch_query"])
     row_requests: list[dict] = []
     for _, row in df.iterrows():
         date = str(row["acq_date"])[:10]
@@ -84,7 +88,7 @@ def build_row_requests(df: pd.DataFrame) -> list[dict]:
                 "longitude": float(row["longitude"]),
                 "start_date": date,
                 "end_date": date,
-                **config["batch_query"],
+                **query,
             }
         )
     return row_requests
@@ -295,8 +299,14 @@ def build_batch_request(df: pd.DataFrame) -> tuple[str, dict]:
     params: dict = {
         key: [row_request[key] for row_request in row_requests] for key in ROW_KEYS
     }
-    params.update(config["batch_query"])
+    # Copia profunda por el mismo motivo que en build_row_requests.
+    params.update(copy.deepcopy(config["batch_query"]))
     return config["base_url"], params
+
+
+def _finite_or_none(value: float) -> float | None:
+    """Escalar del SDK a ``None`` si es NaN."""
+    return None if math.isnan(value) else value
 
 
 def split_acq_time(acq_time: str | float) -> tuple[int, int, float]:
@@ -361,7 +371,9 @@ def interpolate_hourly_fields(hourly: list[dict], acq_time: str | float) -> dict
         if key == "date":
             continue
         next_value = hourly[next_idx][key]
-        if prev_value is None or next_value is None:
+        # pd.isna cubre None y NaN float (la API puede devolver nulos que
+        # no pasaron por None al parsear); con hueco el resultado es None.
+        if pd.isna(prev_value) or pd.isna(next_value):
             interpolated[key] = None
             continue
         interpolated[key] = prev_value + (next_value - prev_value) * pct
@@ -404,7 +416,7 @@ def fill_weather(df: pd.DataFrame, start: int, records: list[dict]) -> None:
         # pandas rechaza None en columnas float64: el hueco va como NaN
         matrix.append(
             [
-                float("nan") if row_values[field] is None else row_values[field]
+                float("nan") if pd.isna(row_values[field]) else row_values[field]
                 for field in fields
             ]
         )
@@ -486,27 +498,52 @@ def fetch_next_batch(
     responses = openmeteo.weather_api(url, params=params, method="POST")
 
     records: list[dict] = []
-    for response in responses:
+    for position, response in enumerate(responses):
         # Con timezone=GMT el flatbuffer no trae nombre de zona horaria
         timezone = (response.Timezone() or b"GMT").decode()
         # El epoch del flatbuffer es UTC absoluto y con timezone=GMT el offset
         # es 0, así que la ventana pedida sale directa: 00:00-23:00 de
-        # acq_date en UTC (igual que acq_date/acq_time de FIRMS).
-        assert response.UtcOffsetSeconds() == 0
+        # acq_date en UTC (igual que acq_date/acq_time de FIRMS). Error
+        # explícito (no assert: en producción debe fallar con contexto).
+        if response.UtcOffsetSeconds() != 0:
+            raise ValueError(
+                f"Batch response {position}: expected UtcOffsetSeconds()==0 "
+                f"(timezone=GMT), got {response.UtcOffsetSeconds()}"
+            )
 
         hourly = response.Hourly()
+        # El SDK mapea Variables(i) por posición: si la API devuelve menos
+        # (o reordena) las columnas se desplazarían en silencio.
+        names = params["hourly"]
+        if hourly.VariablesLength() != len(names):
+            raise ValueError(
+                f"Batch response {position}: API returned "
+                f"{hourly.VariablesLength()} variables, requested {len(names)}"
+            )
+        interval_s = hourly.Interval()
+        start = pd.to_datetime(hourly.Time(), unit="s")
+        end = pd.to_datetime(hourly.TimeEnd(), unit="s")
+        # La interpolación asume 24 valores horarios empezando a medianoche.
+        if (
+            interval_s != 3600
+            or start.hour != 0
+            or (end - start) != pd.Timedelta(hours=24)
+        ):
+            raise ValueError(
+                f"Batch response {position}: unexpected hourly window "
+                f"(start={start}, end={end}, interval={interval_s}s)"
+            )
         hourly_dataframe = pd.DataFrame(
             {
                 "date": pd.date_range(
-                    start=pd.to_datetime(hourly.Time(), unit="s"),
-                    end=pd.to_datetime(hourly.TimeEnd(), unit="s"),
-                    freq=pd.Timedelta(seconds=hourly.Interval()),
+                    start=start,
+                    end=end,
+                    freq=pd.Timedelta(seconds=interval_s),
                     inclusive="left",
                 )
             }
         )
         # El orden de variables es el mismo que se pidió en batch_query
-        names = params["hourly"]
         for index, name in enumerate(names):
             hourly_dataframe[name] = hourly.Variables(index).ValuesAsNumpy()
 
@@ -514,9 +551,11 @@ def fetch_next_batch(
         serializable["date"] = serializable["date"].map(lambda d: d.isoformat())
         records.append(
             {
-                "latitude": response.Latitude(),
-                "longitude": response.Longitude(),
-                "elevation": response.Elevation(),
+                # NaN != NaN: los escalares del SDK a None si vinieran vacíos
+                # (el JSON de evidencia lleva allow_nan=False como canario).
+                "latitude": _finite_or_none(response.Latitude()),
+                "longitude": _finite_or_none(response.Longitude()),
+                "elevation": _finite_or_none(response.Elevation()),
                 "timezone": timezone,
                 "utc_offset_seconds": response.UtcOffsetSeconds(),
                 "hourly": json.loads(serializable.to_json(orient="records")),

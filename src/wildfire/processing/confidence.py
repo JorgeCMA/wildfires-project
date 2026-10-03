@@ -120,8 +120,11 @@ def add_unified_confidence(df: pd.DataFrame) -> pd.DataFrame:
         lambda v: numerical_to_categorical(v, thresholds)
     )
 
-    # VIIRS: categorical → numerical
-    df.loc[viirs_mask, "confidence_cat"] = df.loc[viirs_mask, "confidence"].str.lower()
+    # VIIRS: categorical → numerical (strip: " H " mapea bien en num pero
+    # ensuciaba el cat y rompía el invariante {"l", "n", "h"})
+    df.loc[viirs_mask, "confidence_cat"] = (
+        df.loc[viirs_mask, "confidence"].str.strip().str.lower()
+    )
     df.loc[viirs_mask, "confidence_num"] = df.loc[viirs_mask, "confidence_cat"].apply(
         lambda v: categorical_to_numerical(v, thresholds)
     )

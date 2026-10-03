@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import pandas as pd
@@ -59,7 +60,10 @@ SENSOR_FOLDER_NAMES = {
 def _firms_dir(country: str, year: int, sensor: str) -> Path:
     """Build the directory path for a FIRMS sensor/year/country."""
     config = load_config()
-    sensor_path = SENSOR_FOLDER_NAMES.get(sensor.lower(), sensor)
+    # La config manda (firms.sensor_folders); el dict del código es el
+    # respaldo si falta la clave. Deben coincidir (ver tests).
+    folders = config.get("firms", {}).get("sensor_folders", SENSOR_FOLDER_NAMES)
+    sensor_path = folders.get(sensor.lower(), sensor)
     return PROJECT_ROOT / config["data"]["raw"] / "firms" / country / str(year) / sensor_path
 
 
@@ -153,14 +157,20 @@ def load_all_firms(
         sensors = ["modis", "viirs_snpp", "viirs_noaa20"]
 
     frames: list[pd.DataFrame] = []
+    skipped: list[str] = []
     for year in years:
         for sensor in sensors:
             try:
                 df = load_firms(country=country, year=year, sensor=sensor)
                 frames.append(df)
             except FileNotFoundError:
+                skipped.append(f"{year}/{sensor}")
                 continue
 
+    if skipped:
+        warnings.warn(
+            f"Missing FIRMS data for {skipped}; merged without them"
+        )
     if not frames:
         return pd.DataFrame()
 

@@ -23,6 +23,7 @@ Notas
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import geopandas as gpd  # type: ignore[import-untyped]
@@ -148,26 +149,37 @@ def assign_ccaa(
             f"(available: {sorted(boundaries.columns)})"
         )
 
+    if max_distance_m is not None and max_distance_m < 0:
+        raise ValueError(f"max_distance_m must be >= 0, got {max_distance_m}")
+
     out = df.copy()
     out[CCAA_COL] = pd.Series(pd.NA, index=out.index, dtype="object")
     if out.empty:
         return out
 
-    # Puntos con el MISMO índice que out: la asignación final es posicional
-    # por índice y sobrevive a índices no estándar ([5, 7], ...).
+    # Coordenadas ausentes → NaN directo, sin pasar por el join.
+    valid = out[LON_COL].notna() & out[LAT_COL].notna()
+    if not valid.any():
+        return out
+
+    # Índice posicional interno: el índice de entrada puede traer duplicados
+    # y el dedupe por índice los colapsaría; se restaura al final por posición.
+    sub = out.loc[valid].reset_index(drop=True)
     points = gpd.GeoDataFrame(
-        geometry=gpd.points_from_xy(out[LON_COL], out[LAT_COL]),
-        index=out.index,
+        geometry=gpd.points_from_xy(sub[LON_COL], sub[LAT_COL]),
         crs=CRS_WGS84,
     ).to_crs(CRS_METRIC)
 
     regions = boundaries[[name_field, "geometry"]].to_crs(CRS_METRIC)
 
+    # Nota: `within` exige interior estricto — un punto EXACTO sobre la
+    # frontera no casa con ningún polígono y cae al respaldo nearest (con
+    # tope) o a NaN. Frontera compartida con solape → keep-first.
     joined = gpd.sjoin(points, regions, how="left", predicate="within")
     joined = joined[~joined.index.duplicated(keep="first")]
 
     unmatched = joined[name_field].isna()
-    if max_distance_m and unmatched.any():
+    if max_distance_m is not None and max_distance_m > 0 and unmatched.any():
         nearest = gpd.sjoin_nearest(
             points.loc[unmatched],
             regions,
@@ -177,9 +189,17 @@ def assign_ccaa(
         nearest = nearest[~nearest.index.duplicated(keep="first")]
         joined.loc[unmatched, name_field] = nearest[name_field]
 
-    raw_names = joined.reindex(out.index)[name_field]
+    raw_names = joined.reindex(sub.index)[name_field]
     translated = raw_names.map(REGION_NAME_MAP)
-    # Traducidos → nombre del presupuesto; el resto (Ceuta/Melilla, NaN)
-    # pasa sin cambiar.
-    out[CCAA_COL] = translated.where(translated.notna(), raw_names)
+    # Traducidos → nombre del presupuesto; el resto pasa sin cambiar, pero
+    # los no-mapeados avisan (hoy solo Ceuta/Melilla; un renombrado futuro
+    # del GeoJSON rompería las sumas en silencio).
+    unmapped = raw_names[raw_names.notna() & translated.isna()].unique()
+    if len(unmapped):
+        warnings.warn(
+            f"GeoJSON names without budget mapping: {sorted(unmapped)}; "
+            "their budget sums will be NaN"
+        )
+    assigned = translated.where(translated.notna(), raw_names)
+    out.loc[valid, CCAA_COL] = assigned.to_numpy()
     return out

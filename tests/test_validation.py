@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from wildfire.config import PROJECT_ROOT, load_config
+from wildfire.config import PROJECT_ROOT
 from wildfire.enrichment.weather_batch import weather_fields
 from wildfire.processing.validation import (
     validate_enriched,

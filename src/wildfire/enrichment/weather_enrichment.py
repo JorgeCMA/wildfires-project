@@ -1,4 +1,12 @@
-"""Enrich FIRMS data with Open-Meteo historical weather data."""
+"""Enrich FIRMS data with Open-Meteo historical weather data.
+
+.. deprecated::
+    Vía legacy (1 HTTP GET por fila, 6 variables, sin ``models``/``timezone``,
+    hora más cercana en vez de interpolación). El camino de producción es
+    ``weather_batch.py`` (POST de 500 filas, 15 variables, ``best_match``/GMT,
+    interpolación lineal) vía ``scripts/enrich_weather_batch.py``. Se conserva
+    por compatibilidad; no lo uses para descargas nuevas (gasta cuota).
+"""
 
 from __future__ import annotations
 

@@ -198,6 +198,8 @@ def test_build_batch_request_from_first_rows():
 @pytest.mark.integration
 def test_fetch_next_batch_saves_response(tmp_path):
     """POST por lotes: ``batch_rows`` filas -> JSON + CSV parcial rellenado."""
+    from openmeteo_requests.Client import OpenMeteoRequestsError
+
     batch_rows = load_config()["openmeteo"]["batch_rows"]
     csv_path = tmp_path / "partial.csv"
 
@@ -210,7 +212,13 @@ def test_fetch_next_batch_saves_response(tmp_path):
     # save_path explícito: por defecto escribiría en el JSON rastreado
     # data/processed/openmeteo_response.json.
     save_path = tmp_path / "response.json"
-    assert fetch_next_batch(csv_path=csv_path, save_path=save_path) is None
+    try:
+        assert fetch_next_batch(csv_path=csv_path, save_path=save_path) is None
+    except OpenMeteoRequestsError as exc:
+        # Cuota gastada por la descarga en paralelo: skip, no fail.
+        if "429" in str(exc) or "limit" in str(exc).lower():
+            pytest.skip(f"Open-Meteo quota exhausted: {exc}")
+        raise
 
     # La respuesta HTTP queda guardada en JSON para reutilizarla después
     assert save_path.exists()

@@ -7,17 +7,19 @@ from .confidence import (
 )
 from .validation import (
     validate_enriched,
+    validate_enriched_ccaa,
     validate_enriched_clc,
     validate_enriched_openmeteo,
     validate_firms,
 )
 
 __all__ = [
-    "numerical_to_categorical",
-    "categorical_to_numerical",
     "add_unified_confidence",
-    "validate_firms",
+    "categorical_to_numerical",
+    "numerical_to_categorical",
+    "validate_enriched",
+    "validate_enriched_ccaa",
     "validate_enriched_clc",
     "validate_enriched_openmeteo",
-    "validate_enriched",
+    "validate_firms",
 ]

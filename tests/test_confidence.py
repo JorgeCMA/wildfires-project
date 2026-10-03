@@ -129,6 +129,13 @@ class TestCategoricalToNumerical:
         assert categorical_to_numerical("  l  ", thresholds) == 15
         assert categorical_to_numerical(" n ", thresholds) == 50
 
+    def test_whitespace_cat_stays_in_valid_set(self):
+        # " H " mapeaba bien en num pero ensuciaba el cat (" H " != "h").
+        df = _make_firms_df(["viirs_snpp"], [" H "])
+        out = add_unified_confidence(df)
+        assert out["confidence_cat"].iloc[0] == "h"
+        assert out["confidence_num"].iloc[0] == 85
+
     def test_unknown_defaults_to_nominal(self, thresholds):
         assert categorical_to_numerical("x", thresholds) == 50
         assert categorical_to_numerical("unknown", thresholds) == 50
