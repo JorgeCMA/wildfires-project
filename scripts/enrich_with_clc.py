@@ -1,4 +1,9 @@
-"""Enrich merged FIRMS data with CLCPlus land cover."""
+"""Enrich weather-ready FIRMS data with CLCPlus land cover (pipeline stage).
+
+Equivalente en script de la Celda 4 del notebook 01: parte del dataset con
+clima (terminado si existe, si no el parcial filtrado) y escribe la etapa
+``firms_spain_weather_clc.csv`` que alimenta a la Celda 6 (CCAA).
+"""
 
 from __future__ import annotations
 
@@ -6,19 +11,16 @@ import argparse
 import sys
 
 from wildfire.enrichment.clc_enrichment import enrich_with_clc, save_enriched
-from wildfire.enrichment.merge_sensors import load_merged
+from wildfire.enrichment.weather_batch import load_weather_for_clc
 from wildfire.processing.validation import validate_enriched
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Enrich FIRMS data with CLCPlus land cover classification."
+        description="Enrich weather-ready FIRMS data with CLCPlus land cover."
     )
     parser.add_argument(
         "--country", default="Spain", help="Country name (default: Spain)"
-    )
-    parser.add_argument(
-        "--year", type=int, default=None, help="Year to enrich (default: all)"
     )
     parser.add_argument(
         "--validity", default="2023-2025",
@@ -26,12 +28,12 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    print(f"Loading merged FIRMS data for {args.country}...")
+    print("Loading weather-ready FIRMS data (completed or partial)...")
     try:
-        df = load_merged(country=args.country, year=args.year)
-    except FileNotFoundError as e:
+        df = load_weather_for_clc()
+    except (FileNotFoundError, RuntimeError) as e:
         print(f"Error: {e}", file=sys.stderr)
-        print("Run merge_firms.py first.", file=sys.stderr)
+        print("Run scripts/enrich_weather_batch.py first.", file=sys.stderr)
         sys.exit(1)
 
     print(f"Enriching {len(df):,} rows with CLCPlus data...")
@@ -43,7 +45,7 @@ def main() -> None:
         for w in warnings:
             print(f"  - {w}")
 
-    path = save_enriched(df, country=args.country, year=args.year)
+    path = save_enriched(df, filename="firms_spain_weather_clc.csv")
     print(f"Saved enriched data to {path}")
 
 

@@ -22,6 +22,7 @@ Notas
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -112,9 +113,20 @@ def add_ccaa_budget_sums(
     if budget is None:
         budget = load_ccaa_budget()
 
+    # Una (región, año) duplicada inflaría la suma al hacer merge: se queda
+    # con la primera y avisa en vez de corromper en silencio.
+    dupes = int(budget.duplicated(subset=[REGION_COL, YEAR_COL]).sum())
+    if dupes:
+        warnings.warn(f"{dupes} duplicated (region, year) budget rows; keeping first")
+        budget = budget.drop_duplicates(subset=[REGION_COL, YEAR_COL], keep="first")
+
     out = df.copy()
     row_ids = np.arange(len(out))
-    years = pd.to_datetime(out["acq_date"]).dt.year.to_numpy()
+    # Fechas malas → NaT → año NaN → la ventana no casa con ningún año del
+    # presupuesto → sumas NaN (nunca 0, nunca crash, nunca ventana errónea).
+    years = pd.to_datetime(
+        out["acq_date"], format="%Y-%m-%d", errors="coerce"
+    ).dt.year.to_numpy()
 
     # Una fila candidata por (fila original, desplazamiento de año):
     # n=3 → offsets [-2, -1, 0], es decir [año-2 .. año].

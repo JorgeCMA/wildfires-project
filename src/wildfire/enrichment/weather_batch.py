@@ -153,7 +153,9 @@ def load_weather_for_clc(
             f"No row has a temperature_2m value in {partial_path}: run the "
             "Open-Meteo step first (scripts/enrich_weather_batch.py)"
         )
-    return filled
+    # Índice posicional limpio: dropna conserva el índice original y
+    # cualquier asignación posicional (iloc) aguas abajo se desalinearía.
+    return filled.reset_index(drop=True)
 
 
 def find_resume_row(df: pd.DataFrame) -> int:
@@ -169,6 +171,90 @@ def find_resume_row(df: pd.DataFrame) -> int:
 
     missing = df["temperature_2m"].isna().to_numpy().nonzero()[0]
     return int(missing[0]) if missing.size else len(df)
+
+
+def incomplete_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Filas con clima parcial: ``temperature_2m`` presente pero alguna de
+    las 15 variables en NaN (p. ej. la API devolvió nulo para esa variable
+    en esas fechas, como ``boundary_layer_height`` en filas de 2024).
+
+    Si faltan columnas de clima enteras también cuentan como hueco. Sin
+    columna ``temperature_2m`` no hay nada descargado → vacío.
+    """
+    if "temperature_2m" not in df.columns:
+        return df.iloc[0:0]
+    fields = weather_fields()
+    mask = df["temperature_2m"].notna()
+    if not all(f in df.columns for f in fields):
+        return df[mask]
+    return df[mask & df[fields].isna().any(axis=1)]
+
+
+def completeness_report(df: pd.DataFrame) -> dict[str, int]:
+    """NaN por variable entre las filas con ``temperature_2m``.
+
+    Sirve para decidir si el parcial es publicable
+    (:func:`finalize_weather_csv`) y para informar de huecos por variable.
+    """
+    report: dict[str, int] = {}
+    if "temperature_2m" not in df.columns:
+        return report
+    filled = df["temperature_2m"].notna()
+    report["rows_with_weather"] = int(filled.sum())
+    for field in weather_fields():
+        if field in df.columns:
+            report[field] = int(df.loc[filled, field].isna().sum())
+        else:
+            report[field] = int(filled.sum())
+    report["incomplete_rows"] = int(incomplete_rows(df).shape[0])
+    return report
+
+
+def validate_batch_rows(batch: pd.DataFrame) -> list[str]:
+    """Errores de datos en un lote, antes de gastar cuota de API.
+
+    Una sola fila con coordenadas no numéricas, fecha ilegible u hora
+    inválida hace que la API devuelva 400 para la petición entera de 500
+    filas (y el reintento repetiría el mismo lote para siempre). Mejor
+    fallar aquí con las filas señaladas que entrar en ese bucle.
+
+    Parameters
+    ----------
+    batch:
+        Sublote de filas a enviar (índice original como referencia).
+
+    Returns
+    -------
+    list[str]
+        Un mensaje por fila problemática (vacío = lote válido).
+    """
+    errors: list[str] = []
+    for idx, row in batch.iterrows():
+        for col in ("latitude", "longitude"):
+            try:
+                value = float(row[col])
+            except (TypeError, ValueError):
+                value = float("nan")
+            if not math.isfinite(value):
+                errors.append(f"row {idx}: {col}={row[col]!r} is not finite")
+        try:
+            date = pd.to_datetime(row["acq_date"], format="%Y-%m-%d", errors="coerce")
+        except (TypeError, ValueError):
+            date = pd.NaT
+        if pd.isna(date):
+            errors.append(
+                f"row {idx}: acq_date={row['acq_date']!r} is not ISO YYYY-MM-DD"
+            )
+        try:
+            hour, minutes, _ = split_acq_time(row["acq_time"])
+        except (TypeError, ValueError):
+            errors.append(f"row {idx}: acq_time={row['acq_time']!r} is not HHMM")
+            continue
+        if not (0 <= hour <= 23 and 0 <= minutes <= 59):
+            errors.append(
+                f"row {idx}: acq_time={row['acq_time']!r} out of range (HH 00-23, MM 00-59)"
+            )
+    return errors
 
 
 def next_batch(
@@ -359,6 +445,9 @@ def fetch_next_batch(
         Si la API responde 400/429 u otro fallo HTTP; el mensaje de 429
         contiene el motivo (``Minutely``/``Hourly``/``Daily``...) que
         ``classify_rate_limit`` usa para decidir la espera.
+    ValueError
+        Si alguna fila del lote trae coordenadas, fecha u hora inválidas
+        (:func:`validate_batch_rows`): se falla antes de gastar cuota.
     """
     import openmeteo_requests
     import requests_cache
@@ -370,6 +459,15 @@ def fetch_next_batch(
     if batch.empty:
         print("Nothing to fetch: every row already has a temperature_2m value")
         return
+
+    # Falla rápido con las filas señaladas: una sola fila envenenada
+    # devuelve 400 para el POST entero y el reintento repetiría el lote
+    # para siempre. No se gasta cuota hasta que el lote sea válido.
+    problems = validate_batch_rows(batch)
+    if problems:
+        raise ValueError(
+            "Refusing to spend API quota on invalid batch rows:\n" + "\n".join(problems)
+        )
 
     # Cliente de la API con caché y reintentos (el código de abajo asume `openmeteo`).
     # allowable_methods incluye POST: la caché clavea por URL+body, así los
@@ -459,6 +557,7 @@ def fetch_next_batch(
 def finalize_weather_csv(
     partial_path: Path = PARTIAL_CSV,
     complete_path: Path = WEATHER_COMPLETE_CSV,
+    require_complete: bool = True,
 ) -> Path | None:
     """Copia el parcial completo al CSV de clima terminado (idempotente).
 
@@ -474,6 +573,11 @@ def finalize_weather_csv(
         CSV de reanudación. Por defecto ``PARTIAL_CSV``.
     complete_path:
         Destino. Por defecto ``WEATHER_COMPLETE_CSV``.
+    require_complete:
+        Si es ``True`` (defecto), además de tener ``temperature_2m`` en
+        todas las filas exige las 15 variables rellenas
+        (:func:`incomplete_rows` vacío): una fila con clima parcial no se
+        publica como terminada. Con ``False`` basta el centinela clásico.
 
     Returns
     -------
@@ -493,6 +597,21 @@ def finalize_weather_csv(
     df = load_partial_or_merged(partial_path)
     if find_resume_row(df) < len(df):
         return None
+    if require_complete:
+        pending = incomplete_rows(df)
+        if not pending.empty:
+            report = completeness_report(df)
+            details = ", ".join(
+                f"{field}={n}"
+                for field, n in report.items()
+                if field not in ("rows_with_weather", "incomplete_rows") and n
+            )
+            print(
+                f"Partial has temperature_2m everywhere but "
+                f"{len(pending)} rows miss variables ({details}): "
+                f"not publishing {complete_path}"
+            )
+            return None
     if complete_path.exists():
         return complete_path
 

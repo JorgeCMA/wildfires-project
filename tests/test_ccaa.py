@@ -155,6 +155,28 @@ class TestAddCcaaBudgetSums:
         assert pd.isna(out[SUM_PREVENTION_COL].iloc[0])
         assert pd.isna(out[SUM_EXTINCTION_COL].iloc[0])
 
+    def test_malformed_date_is_nan_not_crash(self):
+        budget = _make_budget([("Madrid", 2024, 10.0, 20.0)])
+        df = _make_df([("Madrid", "not-a-date"), ("Madrid", None)])
+        out = add_ccaa_budget_sums(df, n=1, budget=budget)
+        assert pd.isna(out[SUM_PREVENTION_COL].iloc[0])
+        assert pd.isna(out[SUM_PREVENTION_COL].iloc[1])
+        assert pd.isna(out[SUM_EXTINCTION_COL].iloc[0])
+        assert pd.isna(out[SUM_EXTINCTION_COL].iloc[1])
+
+    def test_duplicated_budget_rows_warn_and_keep_first(self):
+        budget = _make_budget(
+            [
+                ("Madrid", 2024, 10.0, 20.0),
+                ("Madrid", 2024, 99.0, 99.0),  # duplicada: no debe duplicar la suma
+            ]
+        )
+        df = _make_df([("Madrid", "2024-08-01")])
+        with pytest.warns(UserWarning, match="duplicated"):
+            out = add_ccaa_budget_sums(df, n=1, budget=budget)
+        assert out[SUM_PREVENTION_COL].iloc[0] == 10.0
+        assert out[SUM_EXTINCTION_COL].iloc[0] == 20.0
+
     def test_missing_region_column_raises(self):
         df = pd.DataFrame({"acq_date": ["2024-01-01"]})
         with pytest.raises(KeyError, match="ccaa"):

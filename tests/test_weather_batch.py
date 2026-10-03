@@ -20,14 +20,18 @@ from wildfire.enrichment.weather_batch import (
     RateLimit,
     WeatherBatchStatus,
     classify_rate_limit,
+    completeness_report,
     estimate_weight_range,
     finalize_weather_csv,
     find_resume_row,
+    incomplete_rows,
     intersect_weight_ranges,
     load_weather_for_clc,
     pacing_advice,
     run_weather_enrichment,
     seconds_until_reset,
+    validate_batch_rows,
+    weather_fields,
 )
 
 # Motivos reales del servidor (RateLimiter.swift), tal y como los envuelve
@@ -385,6 +389,20 @@ def _weather_csv(path: Path, rows: int, filled: int) -> Path:
     return path
 
 
+def _full_weather_csv(path: Path, rows: int, gaps: dict | None = None) -> Path:
+    """CSV con las 15 variables rellenas; ``gaps`` = {col: [índices a NaN]}."""
+    gaps = gaps or {}
+    df = pd.DataFrame({"latitude": [40.0] * rows})
+    for field in weather_fields():
+        values = [10.0] * rows
+        for i in gaps.get(field, []):
+            values[i] = float("nan")
+        df[field] = values
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(path, index=False)
+    return path
+
+
 class TestLoadWeatherForClc:
     """Terminado si existe; si no, parcial filtrado a filas con clima."""
 
@@ -408,6 +426,21 @@ class TestLoadWeatherForClc:
         # conserva el orden original del parcial
         assert out["latitude"].tolist() == [40.0] * 4
 
+    def test_result_has_clean_positional_index(self, tmp_path):
+        df = pd.DataFrame(
+            {
+                "latitude": [40.0] * 4,
+                "temperature_2m": [float("nan"), float("nan"), 10.0, 11.0],
+            }
+        )
+        partial = tmp_path / "weather_partial.csv"
+        df.to_csv(partial, index=False)
+
+        out = load_weather_for_clc(tmp_path / "weather.csv", partial)
+
+        assert out.index.tolist() == [0, 1]  # no conserva [2, 3]
+        assert out["temperature_2m"].tolist() == [10.0, 11.0]
+
     def test_no_weather_column_raises(self, tmp_path):
         partial = _make_csv(tmp_path, rows=3)  # columnas FIRMS sin clima
         missing = tmp_path / "weather.csv"
@@ -423,17 +456,138 @@ class TestLoadWeatherForClc:
             load_weather_for_clc(missing, partial)
 
 
+class TestIncompleteRows:
+    """Filas con temperature_2m pero alguna variable en NaN."""
+
+    def test_temp_only_csv_is_all_incomplete(self, tmp_path):
+        partial = _weather_csv(tmp_path / "weather_partial.csv", rows=3, filled=3)
+        df = pd.read_csv(partial)
+
+        assert len(incomplete_rows(df)) == 3
+
+    def test_full_csv_has_no_incomplete(self, tmp_path):
+        partial = _full_weather_csv(tmp_path / "weather_partial.csv", rows=3)
+        df = pd.read_csv(partial)
+
+        assert incomplete_rows(df).empty
+
+    def test_single_variable_gap_detected(self, tmp_path):
+        partial = _full_weather_csv(
+            tmp_path / "weather_partial.csv",
+            rows=4,
+            gaps={"boundary_layer_height": [1, 3]},
+        )
+        df = pd.read_csv(partial)
+
+        out = incomplete_rows(df)
+        assert out.index.tolist() == [1, 3]
+
+    def test_no_temperature_column_is_empty(self):
+        df = pd.DataFrame({"latitude": [40.0]})
+        assert incomplete_rows(df).empty
+
+    def test_completeness_report_counts(self, tmp_path):
+        partial = _full_weather_csv(
+            tmp_path / "weather_partial.csv",
+            rows=4,
+            gaps={"boundary_layer_height": [0, 2]},
+        )
+        df = pd.read_csv(partial)
+
+        report = completeness_report(df)
+        assert report["rows_with_weather"] == 4
+        assert report["boundary_layer_height"] == 2
+        assert report["temperature_2m"] == 0
+        assert report["incomplete_rows"] == 2
+
+
+class TestValidateBatchRows:
+    def _batch(self, **overrides):
+        base = {
+            "latitude": [40.0],
+            "longitude": [-3.0],
+            "acq_date": ["2023-07-01"],
+            "acq_time": [1200],
+        }
+        base.update(overrides)
+        return pd.DataFrame(base)
+
+    def test_valid_batch_has_no_errors(self):
+        assert validate_batch_rows(self._batch()) == []
+
+    def test_nan_coordinates_reported_with_index(self):
+        df = self._batch()
+        df.index = [501]
+        df.loc[501, "latitude"] = float("nan")
+        errors = validate_batch_rows(df)
+        assert len(errors) == 1
+        assert "501" in errors[0] and "latitude" in errors[0]
+
+    def test_bad_date_reported(self):
+        errors = validate_batch_rows(self._batch(acq_date=["ayer"]))
+        assert len(errors) == 1
+        assert "acq_date" in errors[0]
+
+    def test_bad_time_reported(self):
+        assert validate_batch_rows(self._batch(acq_time=["2400"]))
+        assert validate_batch_rows(self._batch(acq_time=[None]))
+        assert validate_batch_rows(self._batch()) == []
+
+    def test_multiple_problems_all_reported(self):
+        df = pd.DataFrame(
+            {
+                "latitude": [float("nan"), 40.0],
+                "longitude": [-3.0, -3.0],
+                "acq_date": ["2023-07-01", "nope"],
+                "acq_time": [1200, 1200],
+            }
+        )
+        assert len(validate_batch_rows(df)) == 2
+
+
 class TestFinalizeWeatherCsv:
     """Copia parcial→terminado solo cuando la reanudación está al final."""
 
     def test_copies_when_partial_is_complete(self, tmp_path):
-        partial = _weather_csv(tmp_path / "weather_partial.csv", rows=3, filled=3)
+        partial = _full_weather_csv(tmp_path / "weather_partial.csv", rows=3)
         completed = tmp_path / "weather.csv"
 
         result = finalize_weather_csv(partial, completed)
 
         assert result == completed
         pd.testing.assert_frame_equal(pd.read_csv(completed), pd.read_csv(partial))
+
+    def test_temp_only_partial_is_not_publishable_by_default(self, tmp_path):
+        # 15 columnas ausentes = hueco: con require_complete no se publica.
+        partial = _weather_csv(tmp_path / "weather_partial.csv", rows=3, filled=3)
+        completed = tmp_path / "weather.csv"
+
+        result = finalize_weather_csv(partial, completed)
+
+        assert result is None
+        assert not completed.exists()
+
+    def test_require_complete_false_keeps_legacy_sentinel(self, tmp_path):
+        partial = _weather_csv(tmp_path / "weather_partial.csv", rows=3, filled=3)
+        completed = tmp_path / "weather.csv"
+
+        result = finalize_weather_csv(partial, completed, require_complete=False)
+
+        assert result == completed
+        assert completed.exists()
+
+    def test_partial_variable_gap_blocks_publish(self, tmp_path):
+        partial = _full_weather_csv(
+            tmp_path / "weather_partial.csv",
+            rows=3,
+            gaps={"boundary_layer_height": [2]},
+        )
+        completed = tmp_path / "weather.csv"
+
+        result = finalize_weather_csv(partial, completed)
+
+        assert result is None
+        assert not completed.exists()
 
     def test_incomplete_partial_creates_nothing(self, tmp_path):
         partial = _weather_csv(tmp_path / "weather_partial.csv", rows=6, filled=4)
@@ -445,8 +599,8 @@ class TestFinalizeWeatherCsv:
         assert not completed.exists()
 
     def test_idempotent_when_completed_exists(self, tmp_path):
-        partial = _weather_csv(tmp_path / "weather_partial.csv", rows=3, filled=3)
-        completed = _weather_csv(tmp_path / "weather.csv", rows=3, filled=3)
+        partial = _full_weather_csv(tmp_path / "weather_partial.csv", rows=3)
+        completed = _full_weather_csv(tmp_path / "weather.csv", rows=3)
         completed.write_text("sentinel\n", encoding="utf-8")
 
         result = finalize_weather_csv(partial, completed)
