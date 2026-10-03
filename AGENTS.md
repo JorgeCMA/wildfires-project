@@ -6,7 +6,7 @@
 # Install (requires GDAL/system libs for rasterio/geopandas)
 pip install -e ".[dev]"    # dev extras: pytest, mypy, ruff, ipykernel, nbformat, nbclient
 
-# Tests (299 total; 297 run by default, 2 integration deselected via addopts)
+# Tests (307 total; 305 run by default, 2 integration deselected via addopts)
 pytest tests/                            # default: -m "not integration" (see pyproject)
 pytest -m integration                    # only the 2 real-network tests (spends API quota!)
 pytest tests/test_clc.py                 # single file
@@ -40,7 +40,7 @@ CSV chain under `data/processed/` — every name denotes its contents, each feed
 2. `enriched/firms_spain_weather_partial.csv` — +15 weather, resume point (in-progress)
 3. `enriched/firms_spain_weather.csv` — completed weather (written by `finalize_weather_csv`)
 4. `enriched/firms_spain_weather_clc.csv` — + `clc_class`, neighbors, `clc_uniform_surroundings`
-5. `enriched/firms_spain_final.csv` — + `ccaa`, `sum_prevention`, `sum_extinction` (modeling input; 39,500×50 as of 2026-10-02 — re-run Celdas 3→4→6 after the weather download completes for all 47,505 rows)
+5. `enriched/firms_spain_final.csv` — + `ccaa`, `sum_prevention`, `sum_extinction` (modeling input; 46,500×50 as of 2026-10-02 — re-run Celdas 3→4→6 after the weather download completes for all 47,505 rows)
 
 - `src/wildfire/data/` — FIRMS CSV loading (`firms.py`), CLCPlus tile listing (`clc.py`),
   Open-Meteo single-row client (`openmeteo.py`), regional budget CSV (`ccaa.py`)
@@ -143,8 +143,14 @@ Comments are bilingual ES/EN; cells only orchestrate — acquisition logic >5 li
 
 - **`tests/conftest.py`** manually manipulates `sys.path` instead of relying on editable install.
 
-- **Weather run state**: `firms_spain_weather_partial.csv` resume = 39,500/47,505 (was
-  32,500/47,505, stopped on the daily limit 2026-10-01; download still Jorge's job).
+- **CLC tile keys**: canonical zero-padded `E{XX}N{YY}` via `_tile_key`
+  (`clc_enrichment.py`) — lookups built `E17N9` missed index key `E17N09`
+  (102 eastern-Canaries rows lost all CLC; fixed 2026-10-02 + 8 regression
+  tests in `test_clc.py`: `TestTileKey`, N09 neighbor crossings, N09 index
+  key, mocked N09 enrich).
+
+- **Weather run state**: `firms_spain_weather_partial.csv` resume = 46,500/47,505 (was
+  39,500/47,505, then 32,500/47,505, stopped on the daily limit 2026-10-01; download still Jorge's job).
   Resume = re-run `python scripts/enrich_weather_batch.py`
   (exit 0 publishes `firms_spain_weather.csv`). After it completes, re-run notebook
   Celdas 3→4→6 to refresh `firms_spain_weather_clc.csv` + `firms_spain_final.csv`
