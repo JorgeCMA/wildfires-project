@@ -170,7 +170,8 @@ def assign_ccaa(
         crs=CRS_WGS84,
     ).to_crs(CRS_METRIC)
 
-    regions = boundaries[[name_field, "geometry"]].to_crs(CRS_METRIC)
+    geom_col = boundaries.geometry.name
+    regions = boundaries[[name_field, geom_col]].to_crs(CRS_METRIC)
 
     # Nota: `within` exige interior estricto — un punto EXACTO sobre la
     # frontera no casa con ningún polígono y cae al respaldo nearest (con

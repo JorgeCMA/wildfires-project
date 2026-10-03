@@ -355,6 +355,12 @@ class TestBuildTileIndex:
         assert len(result) == 3
         assert all(k in result for k in ["E31N20", "E31N21", "E32N20"])
 
+    def test_missing_dir_warns_and_returns_empty(self):
+        from wildfire.data.clc import list_clc_tiles
+
+        with pytest.warns(UserWarning, match="not found"):
+            assert list_clc_tiles(country="Nope") == []
+
     @patch("wildfire.enrichment.clc_enrichment.list_clc_tiles")
     def test_skips_files_without_tile_key(self, mock_list_tiles, tmp_path):
         good = tmp_path / "CLMS_CLCPLUS_RAS_S2023_R10m_E31N23_03035_V01_R00.tif"

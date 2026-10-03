@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import pandas as pd
 import yaml
 
 from wildfire.config import load_config
-from wildfire.data.firms import load_all_firms
 
 
 def _load_thresholds() -> dict:
@@ -106,6 +106,16 @@ def add_unified_confidence(df: pd.DataFrame) -> pd.DataFrame:
     modis_mask = df["sensor"] == "modis"
     viirs_mask = df["sensor"].str.startswith("viirs")
 
+    # Sensores desconocidos/ausentes no casan con ninguna máscara y saldrían
+    # con confianza toda-NaN en silencio: avisar en vez de corromper.
+    known = (modis_mask | viirs_mask).fillna(False)
+    if (~known).any():
+        warnings.warn(
+            f"{int((~known).sum())} rows have unknown sensor "
+            f"({sorted(df.loc[~known, 'sensor'].astype(str).unique())}); "
+            "their confidence stays NaN"
+        )
+
     df.loc[modis_mask, "confidence_og_num"] = df.loc[modis_mask, "confidence"]
     df.loc[viirs_mask, "confidence_og_cat"] = df.loc[viirs_mask, "confidence"]
 
@@ -129,7 +139,11 @@ def add_unified_confidence(df: pd.DataFrame) -> pd.DataFrame:
         lambda v: categorical_to_numerical(v, thresholds)
     )
 
-    df["confidence_cat"] = df["confidence_cat"].astype("category")
+    # Categorías fijas (no derivadas de lo observado): el contrato es
+    # exactamente ["l", "n", "h"] aunque alguna no aparezca en los datos.
+    df["confidence_cat"] = pd.Categorical(
+        df["confidence_cat"], categories=["l", "n", "h"]
+    )
     df["confidence_num"] = pd.to_numeric(df["confidence_num"], errors="coerce")
 
     return df

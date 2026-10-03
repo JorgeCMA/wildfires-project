@@ -136,6 +136,18 @@ class TestCategoricalToNumerical:
         assert out["confidence_cat"].iloc[0] == "h"
         assert out["confidence_num"].iloc[0] == 85
 
+    def test_unknown_sensor_warns_and_stays_nan(self):
+        df = _make_firms_df(["bogus"], ["50"])
+        with pytest.warns(UserWarning, match="unknown sensor"):
+            out = add_unified_confidence(df)
+        assert pd.isna(out["confidence_cat"].iloc[0])
+        assert pd.isna(out["confidence_num"].iloc[0])
+
+    def test_categories_are_fixed_l_n_h(self):
+        df = _make_firms_df(["viirs_snpp"], ["h"])
+        out = add_unified_confidence(df)
+        assert list(out["confidence_cat"].cat.categories) == ["l", "n", "h"]
+
     def test_unknown_defaults_to_nominal(self, thresholds):
         assert categorical_to_numerical("x", thresholds) == 50
         assert categorical_to_numerical("unknown", thresholds) == 50

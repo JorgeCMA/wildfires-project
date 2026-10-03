@@ -101,8 +101,8 @@ def add_ccaa_budget_sums(
     """
     if n is None:
         n = load_config()["ccaa"]["years_window"]
-    if n < 1:
-        raise ValueError(f"n must be >= 1, got {n}")
+    if isinstance(n, bool) or not isinstance(n, int) or n < 1:
+        raise ValueError(f"n must be an integer >= 1, got {n!r}")
 
     missing = [col for col in ("ccaa", "acq_date") if col not in df.columns]
     if missing:

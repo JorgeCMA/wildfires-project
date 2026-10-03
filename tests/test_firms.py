@@ -157,3 +157,16 @@ class TestListAvailableFirms:
             assert entry["sensor"] in valid_keys, (
                 f"Sensor {entry['sensor']!r} not in SENSOR_FOLDER_NAMES"
             )
+
+    def test_unknown_folder_warns_and_keeps_raw_key(self, tmp_path, monkeypatch):
+        import wildfire.data.firms as firms_mod
+
+        weird = tmp_path / "data" / "raw" / "firms" / "Spain" / "2023" / "Weird"
+        weird.mkdir(parents=True)
+        (weird / "f.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+        monkeypatch.setattr(firms_mod, "PROJECT_ROOT", tmp_path)
+
+        with pytest.warns(UserWarning, match="Unknown FIRMS folder"):
+            result = list_available_firms(country="Spain")
+
+        assert result[0]["sensor"] == "weird"

@@ -9,38 +9,6 @@ import pandas as pd
 
 from wildfire.config import PROJECT_ROOT, load_config
 
-VIIRS_COLUMNS = {
-    "latitude": float,
-    "longitude": float,
-    "bright_ti4": float,
-    "scan": float,
-    "track": float,
-    "acq_date": str,
-    "acq_time": str,
-    "satellite": str,
-    "confidence": str,
-    "version": str,
-    "bright_ti5": float,
-    "frp": float,
-    "daynight": str,
-}
-
-MODIS_COLUMNS = {
-    "latitude": float,
-    "longitude": float,
-    "brightness": float,
-    "scan": float,
-    "track": float,
-    "acq_date": str,
-    "acq_time": str,
-    "satellite": str,
-    "confidence": str,
-    "version": str,
-    "bright_t31": float,
-    "frp": float,
-    "daynight": str,
-}
-
 VIIRS_COLS_TO_RENAME = {
     "bright_ti4": "brightness",
     "bright_ti5": "brightness_ir",
@@ -68,10 +36,10 @@ def _firms_dir(country: str, year: int, sensor: str) -> Path:
 
 
 def _find_csv_in_dir(directory: Path) -> Path | None:
-    """Find the first CSV file in a directory."""
+    """Find the first CSV file in a directory (sorted: deterministic)."""
     if not directory.exists():
         return None
-    csvs = list(directory.glob("*.csv"))
+    csvs = sorted(directory.glob("*.csv"))
     return csvs[0] if csvs else None
 
 
@@ -209,6 +177,8 @@ def list_available_firms(country: str = "Spain") -> list[dict[str, str | int]]:
             # Use relative path from year_dir to match SENSOR_FOLDER_NAMES keys
             rel_dir = csv_path.parent.relative_to(year_dir).as_posix().lower()
             sensor_key = folder_to_sensor.get(rel_dir, rel_dir)
+            if rel_dir not in folder_to_sensor:
+                warnings.warn(f"Unknown FIRMS folder {rel_dir!r}; using it as sensor key")
             results.append({
                 "country": country,
                 "year": year,

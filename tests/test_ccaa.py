@@ -189,8 +189,15 @@ class TestAddCcaaBudgetSums:
 
     def test_invalid_n_raises(self):
         df = _make_df([("Madrid", "2024-08-01")])
-        with pytest.raises(ValueError, match="n must be >= 1"):
+        with pytest.raises(ValueError, match="integer >= 1"):
             add_ccaa_budget_sums(df, n=0, budget=_make_budget([]))
+
+    def test_non_integer_n_raises(self):
+        df = _make_df([("Madrid", "2024-08-01")])
+        with pytest.raises(ValueError, match="integer >= 1"):
+            add_ccaa_budget_sums(df, n=2.5, budget=_make_budget([]))
+        with pytest.raises(ValueError, match="integer >= 1"):
+            add_ccaa_budget_sums(df, n=True, budget=_make_budget([]))
 
     def test_does_not_mutate_input_and_keeps_index(self):
         budget = _make_budget([("Madrid", 2024, 10.0, 20.0)])

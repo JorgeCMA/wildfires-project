@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 from wildfire.config import load_config
@@ -31,6 +32,7 @@ def list_clc_tiles(country: str = "Spain", validity: str = "2023-2025") -> list[
     """
     tile_dir = _clc_root(country) / validity
     if not tile_dir.exists():
+        warnings.warn(f"CLCPlus tile dir not found: {tile_dir}; no tiles")
         return []
     return sorted(tile_dir.glob("**/*.tif"))
 
