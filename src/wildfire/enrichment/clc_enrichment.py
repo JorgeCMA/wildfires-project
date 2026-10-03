@@ -108,6 +108,17 @@ NEIGHBORHOOD_RINGS: dict[int, list[tuple[int, int, str]]] = {
 }
 
 
+def _tile_key(e: int, n: int) -> str:
+    """Canonical tile key, zero-padded like the Copernicus filenames.
+
+    Filenames use ``E{XX}N{YY}`` (e.g. ``E17N09``); building keys from
+    coordinates without padding (``E17N9``) misses every single-digit-N
+    tile in the index (eastern Canarias). All key sites — index, lookup,
+    neighbor resolution — must go through this helper.
+    """
+    return f"E{e:02d}N{n:02d}"
+
+
 def _resolve_neighbor(
     tile_key: str,
     row: int,
@@ -152,7 +163,7 @@ def _resolve_neighbor(
     new_row = raw_row % tile_height
     new_col = raw_col % tile_width
 
-    return f"E{e}N{n}", new_row, new_col
+    return _tile_key(e, n), new_row, new_col
 
 
 def _build_tile_index(
@@ -164,11 +175,15 @@ def _build_tile_index(
     index: dict[str, Path] = {}
     for tile in tiles:
         # Extract E{XX}N{YY} from filename like
-        # CLMS_CLCPLUS_RAS_S2023_R10m_E31N23_03035_V01_R00
+        # CLMS_CLCPLUS_RAS_S2023_R10m_E31N23_03035_V01_R00, normalized
+        # through _tile_key (filenames are already padded; this also
+        # accepts unpadded variants).
         parts = tile.stem.split("_")
         for part in parts:
             if part.startswith("E") and "N" in part:
-                index[part] = tile
+                e = int(part[1 : part.index("N")])
+                n = int(part[part.index("N") + 1 :])
+                index[_tile_key(e, n)] = tile
                 break
     return index
 
@@ -237,7 +252,7 @@ def enrich_with_clc(
     tile_index = _build_tile_index(country=country, validity=validity)
 
     xs, ys = transformer.transform(df["longitude"].values, df["latitude"].values)
-    tile_keys = [f"E{int(x // 100000)}N{int(y // 100000)}" for x, y in zip(xs, ys)]
+    tile_keys = [_tile_key(int(x // 100000), int(y // 100000)) for x, y in zip(xs, ys)]
 
     # Collect neighbor offsets for all enabled rings.
     neighbor_offsets: list[tuple[int, int, str]] = []

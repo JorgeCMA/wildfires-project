@@ -15,6 +15,7 @@ from wildfire.enrichment.clc_enrichment import (
     _build_tile_index,
     _pixel_value,
     _resolve_neighbor,
+    _tile_key,
     enrich_with_clc,
     save_enriched,
 )
@@ -212,6 +213,49 @@ class TestResolveNeighbor:
         assert row == 5000
         assert col == 5000
 
+    def test_cross_south_boundary_into_single_digit_n(self):
+        # E17N10 -> sur -> E17N09 (Canarias orientales): la clave de salida
+        # va con cero (formato de los ficheros), no "E17N9".
+        tile, row, col = _resolve_neighbor(
+            "E17N10", 9999, 5000, 1, 0,
+            tile_height=self.TILE_H, tile_width=self.TILE_W,
+        )
+        assert tile == "E17N09"
+        assert row == 0
+        assert col == 5000
+
+    def test_cross_north_boundary_from_single_digit_n(self):
+        # Entrada ya con cero: se parsea igual y la salida sigue el formato.
+        tile, row, col = _resolve_neighbor(
+            "E17N09", 0, 5000, -1, 0,
+            tile_height=self.TILE_H, tile_width=self.TILE_W,
+        )
+        assert tile == "E17N10"
+        assert row == 9999
+        assert col == 5000
+
+
+# ---------------------------------------------------------------------------
+# _tile_key — canonical zero-padded key (regression: E17N9 vs E17N09)
+# ---------------------------------------------------------------------------
+
+class TestTileKey:
+    def test_pads_single_digit_n(self):
+        assert _tile_key(17, 9) == "E17N09"
+
+    def test_leaves_two_digit_untouched(self):
+        assert _tile_key(31, 20) == "E31N20"
+
+    def test_pads_single_digit_e(self):
+        assert _tile_key(5, 7) == "E05N07"
+
+    def test_roundtrip_with_resolve_neighbor(self):
+        tile, _, _ = _resolve_neighbor(
+            "E17N10", 9999, 5000, 1, 0,
+            tile_height=10000, tile_width=10000,
+        )
+        assert tile == _tile_key(17, 9) == "E17N09"
+
 
 # ---------------------------------------------------------------------------
 # _pixel_value
@@ -321,6 +365,16 @@ class TestBuildTileIndex:
         result = _build_tile_index()
         assert len(result) == 1
 
+    @patch("wildfire.enrichment.clc_enrichment.list_clc_tiles")
+    def test_single_digit_n_filename(self, mock_list_tiles, tmp_path):
+        tile = tmp_path / "CLMS_CLCPLUS_RAS_S2023_R10m_E17N09_03035_V01_R00.tif"
+        tile.touch()
+        mock_list_tiles.return_value = [tile]
+        result = _build_tile_index()
+        assert "E17N09" in result
+        assert "E17N9" not in result
+        assert result["E17N09"] == tile
+
 
 # ---------------------------------------------------------------------------
 # enrich_with_clc — output schema and uniform surroundings
@@ -405,6 +459,37 @@ class TestEnrichWithClc:
         original_cols = list(df.columns)
         enrich_with_clc(df)
         assert list(df.columns) == original_cols
+
+    @patch("wildfire.enrichment.clc_enrichment.rasterio")
+    @patch("wildfire.enrichment.clc_enrichment._build_tile_index")
+    @patch("wildfire.enrichment.clc_enrichment.load_config")
+    @patch("wildfire.enrichment.clc_enrichment.Transformer")
+    def test_lookup_hits_single_digit_n_tile(self, mock_tf, mock_cfg, mock_idx, mock_rio):
+        # Regresión (Canarias orientales): las coords caen en E17N09 y el
+        # índice trae la clave con cero del fichero. Con el formato viejo
+        # ("E17N9") el lookup fallaba y clc_class salía None.
+        mock_cfg.return_value = {
+            "clcplus": {"neighborhood": {"enabled": False, "rings": []}}
+        }
+        mock_instance = MagicMock()
+        mock_instance.transform.return_value = (
+            np.array([1750000.0]),
+            np.array([950000.0]),
+        )
+        mock_tf.from_crs.return_value = mock_instance
+        mock_idx.return_value = {"E17N09": Path("/fake.tif")}
+
+        mock_reader = MagicMock()
+        mock_reader.index.return_value = (5000, 5000)
+        mock_reader.height = 10000
+        mock_reader.width = 10000
+        mock_reader.nodata = None
+        mock_reader.read.return_value = np.array([[5.0]])
+        mock_rio.open.return_value = mock_reader
+
+        df = self._make_firms_df([28.2], [-14.5])
+        result = enrich_with_clc(df)
+        assert result["clc_class"].iloc[0] == 5
 
     @patch("wildfire.enrichment.clc_enrichment.rasterio")
     @patch("wildfire.enrichment.clc_enrichment._build_tile_index")
