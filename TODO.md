@@ -57,9 +57,10 @@ unmapped → budget sums `NaN`; no rows ever dropped.
 - Celda 5 decision: drop `clc_class == 1`? (team).
 - ~~Boundaries source decision (open item 2)~~ — resolved 2026-10-02 (team GeoJSON).
 - Git tracking policy for large generated CSVs (open item 3).
-- README drift + `build_dataset.py` mismatch (open item 4); skip-on-429 for integration
-  tests (open item 5); catalog checksums / prediction target / branching / ruff-mypy
-  baseline cleanup (open item 6).
+- README drift (open item 4; `build_dataset.py` deleted 2026-10-03 as superseded);
+  skip-on-429 for integration tests (open item 5) done 2026-10-03; catalog checksums /
+  prediction target / branching (open item 6); ruff-mypy baselines cut 38→28 / 17→16
+  in the 2026-10-03 hardening batches (14 mypy remain).
 
 ---
 

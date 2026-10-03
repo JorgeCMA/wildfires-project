@@ -6,7 +6,7 @@
 # Install (requires GDAL/system libs for rasterio/geopandas)
 pip install -e ".[dev]"    # dev extras: pytest, mypy, ruff, ipykernel, nbformat, nbclient
 
-# Tests (307 total; 305 run by default, 2 integration deselected via addopts)
+# Tests (350 total; 348 run by default, 2 integration deselected via addopts)
 pytest tests/                            # default: -m "not integration" (see pyproject)
 pytest -m integration                    # only the 2 real-network tests (spends API quota!)
 pytest tests/test_clc.py                 # single file
@@ -23,8 +23,8 @@ python -c "import nbformat; nbformat.validate(nbformat.read('notebooks/01_recopi
 
 No Makefile, no CI, no pre-commit hooks. Commands above are the entire dev workflow.
 
-Baselines (2026-10-02): `ruff check src/ tests/ scripts/` = **38 errors** (pre-existing),
-`ruff format --check` = **17 files** (pre-existing), `mypy src/` = **14 errors** (pre-existing).
+Baselines (2026-10-03): `ruff check src/ tests/ scripts/` = **28 errors** (pre-existing),
+`ruff format --check` = **16 files** (pre-existing), `mypy src/` = **14 errors** (pre-existing).
 Don't add new ones; wholesale cleanup is tracked in TODO/compact, not done ad hoc.
 
 ## Architecture
@@ -49,7 +49,10 @@ CSV chain under `data/processed/` — every name denotes its contents, each feed
   `weather_batch.py` (**production weather path**: 500-row POST batches, resume CSV,
   429 classification/wait, `load_weather_for_clc`/`finalize_weather_csv`),
   `weather_enrichment.py` (**old path**, 1 HTTP GET per row — superseded, kept for back-compat)
-- `src/wildfire/processing/` — confidence mapping, validation (warnings only, never raises)
+- `src/wildfire/processing/` — confidence mapping (`confidence_cat` fixed
+  `Categorical ["l","n","h"]`), validation (warnings only, never raises;
+  fail-closed: missing expected columns warn; covers all 15 weather vars,
+  CLC neighbors, `ccaa`/sums via `validate_enriched_ccaa`)
 - `src/wildfire/geo/` — CCAA boundaries (`regions.py`: `load_boundaries` with
   `make_valid`, `assign_ccaa` — `within` join in EPSG:3035 + `sjoin_nearest`
   fallback ≤ `ccaa.nearest_max_distance_m`, keep-first dedupe, `REGION_NAME_MAP`
