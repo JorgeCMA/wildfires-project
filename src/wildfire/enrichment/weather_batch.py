@@ -309,6 +309,98 @@ def _finite_or_none(value: float) -> float | None:
     return None if math.isnan(value) else value
 
 
+def _response_to_record(response, names: list[str], position: int) -> dict:
+    """Convierte una respuesta del SDK en un registro JSON-serializable.
+
+    Función separada (y no código inline en el bucle) a propósito: las
+    variables locales de la ventana (``window_start``/``window_end``) no
+    deben sombrear jamás el ``start`` posicional del lote en
+    :func:`fetch_next_batch` (el shadowing rompió el ``json.dumps`` del
+    payload con ``TypeError: Timestamp is not JSON serializable``).
+
+    Parameters
+    ----------
+    response:
+        Una respuesta de ``openmeteo.weather_api`` (objeto SDK).
+    names:
+        Variables pedidas (``params["hourly"]``): el SDK las mapea por
+        posición, así que se verifica el conteo.
+    position:
+        Índice de la respuesta en el lote (para los mensajes de error).
+
+    Returns
+    -------
+    dict
+        Registro con escalares + ``hourly`` (24 entradas con ``date`` ISO
+        y una clave por variable; nulos como ``None``).
+
+    Raises
+    ------
+    ValueError
+        Si el offset UTC no es 0, el conteo de variables no coincide o la
+        ventana no son 24 valores horarios desde medianoche.
+    """
+    # Con timezone=GMT el flatbuffer no trae nombre de zona horaria
+    tz_name = (response.Timezone() or b"GMT").decode()
+    # El epoch del flatbuffer es UTC absoluto y con timezone=GMT el offset
+    # es 0, así que la ventana pedida sale directa: 00:00-23:00 de
+    # acq_date en UTC (igual que acq_date/acq_time de FIRMS). Error
+    # explícito (no assert: en producción debe fallar con contexto).
+    if response.UtcOffsetSeconds() != 0:
+        raise ValueError(
+            f"Batch response {position}: expected UtcOffsetSeconds()==0 "
+            f"(timezone=GMT), got {response.UtcOffsetSeconds()}"
+        )
+
+    hourly = response.Hourly()
+    # El SDK mapea Variables(i) por posición: si la API devuelve menos
+    # (o reordena) las columnas se desplazarían en silencio.
+    if hourly.VariablesLength() != len(names):
+        raise ValueError(
+            f"Batch response {position}: API returned "
+            f"{hourly.VariablesLength()} variables, requested {len(names)}"
+        )
+    interval_s = hourly.Interval()
+    window_start = pd.to_datetime(hourly.Time(), unit="s")
+    window_end = pd.to_datetime(hourly.TimeEnd(), unit="s")
+    # La interpolación asume 24 valores horarios empezando a medianoche.
+    if (
+        interval_s != 3600
+        or window_start.hour != 0
+        or (window_end - window_start) != pd.Timedelta(hours=24)
+    ):
+        raise ValueError(
+            f"Batch response {position}: unexpected hourly window "
+            f"(start={window_start}, end={window_end}, interval={interval_s}s)"
+        )
+    hourly_dataframe = pd.DataFrame(
+        {
+            "date": pd.date_range(
+                start=window_start,
+                end=window_end,
+                freq=pd.Timedelta(seconds=interval_s),
+                inclusive="left",
+            )
+        }
+    )
+    # El orden de variables es el mismo que se pidió en batch_query
+    for index, name in enumerate(names):
+        hourly_dataframe[name] = hourly.Variables(index).ValuesAsNumpy()
+
+    serializable = hourly_dataframe.copy()
+    serializable["date"] = serializable["date"].map(lambda d: d.isoformat())
+    return {
+        # NaN → None en escalares (el JSON de evidencia lleva
+        # allow_nan=False como canario).
+        "latitude": _finite_or_none(response.Latitude()),
+        "longitude": _finite_or_none(response.Longitude()),
+        "elevation": _finite_or_none(response.Elevation()),
+        "timezone": tz_name,
+        "utc_offset_seconds": response.UtcOffsetSeconds(),
+        "hourly": json.loads(serializable.to_json(orient="records")),
+    }
+
+
 def split_acq_time(acq_time: str | float) -> tuple[int, int, float]:
     """Divide la hora de adquisición FIRMS (``HHMM``) en sus tres partes.
 
@@ -499,68 +591,7 @@ def fetch_next_batch(
 
     records: list[dict] = []
     for position, response in enumerate(responses):
-        # Con timezone=GMT el flatbuffer no trae nombre de zona horaria
-        timezone = (response.Timezone() or b"GMT").decode()
-        # El epoch del flatbuffer es UTC absoluto y con timezone=GMT el offset
-        # es 0, así que la ventana pedida sale directa: 00:00-23:00 de
-        # acq_date en UTC (igual que acq_date/acq_time de FIRMS). Error
-        # explícito (no assert: en producción debe fallar con contexto).
-        if response.UtcOffsetSeconds() != 0:
-            raise ValueError(
-                f"Batch response {position}: expected UtcOffsetSeconds()==0 "
-                f"(timezone=GMT), got {response.UtcOffsetSeconds()}"
-            )
-
-        hourly = response.Hourly()
-        # El SDK mapea Variables(i) por posición: si la API devuelve menos
-        # (o reordena) las columnas se desplazarían en silencio.
-        names = params["hourly"]
-        if hourly.VariablesLength() != len(names):
-            raise ValueError(
-                f"Batch response {position}: API returned "
-                f"{hourly.VariablesLength()} variables, requested {len(names)}"
-            )
-        interval_s = hourly.Interval()
-        start = pd.to_datetime(hourly.Time(), unit="s")
-        end = pd.to_datetime(hourly.TimeEnd(), unit="s")
-        # La interpolación asume 24 valores horarios empezando a medianoche.
-        if (
-            interval_s != 3600
-            or start.hour != 0
-            or (end - start) != pd.Timedelta(hours=24)
-        ):
-            raise ValueError(
-                f"Batch response {position}: unexpected hourly window "
-                f"(start={start}, end={end}, interval={interval_s}s)"
-            )
-        hourly_dataframe = pd.DataFrame(
-            {
-                "date": pd.date_range(
-                    start=start,
-                    end=end,
-                    freq=pd.Timedelta(seconds=interval_s),
-                    inclusive="left",
-                )
-            }
-        )
-        # El orden de variables es el mismo que se pidió en batch_query
-        for index, name in enumerate(names):
-            hourly_dataframe[name] = hourly.Variables(index).ValuesAsNumpy()
-
-        serializable = hourly_dataframe.copy()
-        serializable["date"] = serializable["date"].map(lambda d: d.isoformat())
-        records.append(
-            {
-                # NaN != NaN: los escalares del SDK a None si vinieran vacíos
-                # (el JSON de evidencia lleva allow_nan=False como canario).
-                "latitude": _finite_or_none(response.Latitude()),
-                "longitude": _finite_or_none(response.Longitude()),
-                "elevation": _finite_or_none(response.Elevation()),
-                "timezone": timezone,
-                "utc_offset_seconds": response.UtcOffsetSeconds(),
-                "hourly": json.loads(serializable.to_json(orient="records")),
-            }
-        )
+        records.append(_response_to_record(response, params["hourly"], position))
 
     if save_path is not None:
         save_path.parent.mkdir(parents=True, exist_ok=True)

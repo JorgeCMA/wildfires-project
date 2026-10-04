@@ -8,9 +8,12 @@ sin red y sin dormir de verdad.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import MagicMock
 
+import numpy as np
 import pandas as pd
 import pytest
 from openmeteo_requests.Client import OpenMeteoRequestsError
@@ -19,6 +22,7 @@ from wildfire.config import load_config
 from wildfire.enrichment.weather_batch import (
     RateLimit,
     WeatherBatchStatus,
+    _response_to_record,
     classify_rate_limit,
     completeness_report,
     estimate_weight_range,
@@ -543,6 +547,86 @@ class TestValidateBatchRows:
             }
         )
         assert len(validate_batch_rows(df)) == 2
+
+
+class TestResponseToRecord:
+    """Parseo de una respuesta del SDK sin red (mock): cubre el crash
+    ``TypeError: Timestamp is not JSON serializable`` (un ``start`` local
+    sombreaba el ``start`` posicional del lote)."""
+
+    def _mock_response(
+        self,
+        values=0.0,
+        n_vars=15,
+        offset=0,
+        start=0,
+        end=86400,
+        interval=3600,
+        tz=b"GMT",
+    ):
+        hourly = MagicMock()
+        hourly.Time.return_value = start
+        hourly.TimeEnd.return_value = end
+        hourly.Interval.return_value = interval
+        hourly.VariablesLength.return_value = n_vars
+        var = MagicMock()
+        var.ValuesAsNumpy.return_value = np.full(24, values, dtype=float)
+        hourly.Variables.return_value = var
+
+        response = MagicMock()
+        response.Timezone.return_value = tz
+        response.UtcOffsetSeconds.return_value = offset
+        response.Latitude.return_value = 40.0
+        response.Longitude.return_value = -3.0
+        response.Elevation.return_value = 100.0
+        response.Hourly.return_value = hourly
+        return response
+
+    def test_happy_path_record(self):
+        names = weather_fields()
+        record = _response_to_record(self._mock_response(), names, 0)
+
+        assert len(record["hourly"]) == 24
+        assert record["hourly"][0]["date"] == "1970-01-01T00:00:00"
+        assert record["hourly"][-1]["date"] == "1970-01-01T23:00:00"
+        assert list(record["hourly"][0]) == ["date", *names]
+        assert record["latitude"] == 40.0
+        # El payload del lote serializa (la llamada exacta que crasheaba):
+        payload = {"row_start": 46500, "responses": [record]}
+        json.dumps(payload, indent=2, allow_nan=False)
+
+    def test_nan_variable_becomes_none(self):
+        names = weather_fields()
+        record = _response_to_record(self._mock_response(values=float("nan")), names, 3)
+
+        for entry in record["hourly"]:
+            assert all(entry[name] is None for name in names)
+
+    def test_variable_count_mismatch_raises(self):
+        with pytest.raises(ValueError, match="API returned 14 variables"):
+            _response_to_record(self._mock_response(n_vars=14), weather_fields(), 0)
+
+    def test_nonzero_utc_offset_raises(self):
+        with pytest.raises(ValueError, match="UtcOffsetSeconds"):
+            _response_to_record(self._mock_response(offset=3600), weather_fields(), 0)
+
+    def test_short_window_raises(self):
+        with pytest.raises(ValueError, match="unexpected hourly window"):
+            _response_to_record(self._mock_response(end=23 * 3600), weather_fields(), 0)
+
+    def test_non_midnight_start_raises(self):
+        with pytest.raises(ValueError, match="unexpected hourly window"):
+            _response_to_record(
+                self._mock_response(start=3600, end=25 * 3600),
+                weather_fields(),
+                0,
+            )
+
+    def test_non_hourly_interval_raises(self):
+        with pytest.raises(ValueError, match="unexpected hourly window"):
+            _response_to_record(
+                self._mock_response(interval=10800), weather_fields(), 0
+            )
 
 
 class TestFinalizeWeatherCsv:
