@@ -3,16 +3,23 @@
 from .confidence import (
     add_unified_confidence,
     categorical_to_numerical,
-    load_all_firms_mapped,
     numerical_to_categorical,
 )
-from .validation import validate_enriched, validate_firms
+from .validation import (
+    validate_enriched,
+    validate_enriched_ccaa,
+    validate_enriched_clc,
+    validate_enriched_openmeteo,
+    validate_firms,
+)
 
 __all__ = [
-    "numerical_to_categorical",
-    "categorical_to_numerical",
     "add_unified_confidence",
-    "load_all_firms_mapped",
-    "validate_firms",
+    "categorical_to_numerical",
+    "numerical_to_categorical",
     "validate_enriched",
+    "validate_enriched_ccaa",
+    "validate_enriched_clc",
+    "validate_enriched_openmeteo",
+    "validate_firms",
 ]

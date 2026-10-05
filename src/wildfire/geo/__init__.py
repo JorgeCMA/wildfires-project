@@ -1,9 +1,9 @@
-"""Geospatial utilities."""
+"""Geospatial helpers (CCAA boundaries)."""
 
-from .tiles import find_tile_and_pixel, find_tile_for_point, latlon_to_pixel
+from .regions import REGION_NAME_MAP, assign_ccaa, load_boundaries
 
 __all__ = [
-    "find_tile_for_point",
-    "latlon_to_pixel",
-    "find_tile_and_pixel",
+    "REGION_NAME_MAP",
+    "assign_ccaa",
+    "load_boundaries",
 ]

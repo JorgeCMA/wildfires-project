@@ -1,4 +1,12 @@
-"""Enrich FIRMS data with Open-Meteo historical weather data."""
+"""Enrich FIRMS data with Open-Meteo historical weather data.
+
+.. deprecated::
+    Vía legacy (1 HTTP GET por fila, 6 variables, sin ``models``/``timezone``,
+    hora más cercana en vez de interpolación). El camino de producción es
+    ``weather_batch.py`` (POST de 500 filas, 15 variables, ``best_match``/GMT,
+    interpolación lineal) vía ``scripts/enrich_weather_batch.py``. Se conserva
+    por compatibilidad; no lo uses para descargas nuevas (gasta cuota).
+"""
 
 from __future__ import annotations
 
@@ -6,7 +14,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from wildfire.config import load_config
+from wildfire.config import PROJECT_ROOT, load_config
 from wildfire.data.openmeteo import fetch_weather
 
 
@@ -69,8 +77,6 @@ def enrich_with_weather(
         hour_str = f"{date_str}T{acq_time[:2]}:00"
 
         record: dict = {}
-        for var in hourly.get("time", []):
-            pass
 
         for key, values in hourly.items():
             if key == "time":
@@ -112,7 +118,7 @@ def save_weather_enriched(
         Path to the saved CSV file.
     """
     config = load_config()
-    out_dir = Path(config["output"]["enriched"])
+    out_dir = PROJECT_ROOT / Path(config["output"]["enriched"])
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if year is not None:

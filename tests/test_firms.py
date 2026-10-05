@@ -122,6 +122,16 @@ class TestLoadAllFirms:
         sensors = df["sensor"].unique()
         assert len(sensors) >= 2
 
+    def test_missing_year_warns_and_continues(self):
+        with pytest.warns(UserWarning, match="Missing FIRMS data"):
+            df = load_all_firms(country="Spain", years=[2023, 2099])
+        assert not df.empty
+
+    def test_all_missing_returns_empty_with_warning(self):
+        with pytest.warns(UserWarning, match="Missing FIRMS data"):
+            df = load_all_firms(country="Spain", years=[2099], sensors=["modis"])
+        assert df.empty
+
 
 class TestListAvailableFirms:
     def test_list_returns_list(self):
@@ -147,3 +157,16 @@ class TestListAvailableFirms:
             assert entry["sensor"] in valid_keys, (
                 f"Sensor {entry['sensor']!r} not in SENSOR_FOLDER_NAMES"
             )
+
+    def test_unknown_folder_warns_and_keeps_raw_key(self, tmp_path, monkeypatch):
+        import wildfire.data.firms as firms_mod
+
+        weird = tmp_path / "data" / "raw" / "firms" / "Spain" / "2023" / "Weird"
+        weird.mkdir(parents=True)
+        (weird / "f.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+        monkeypatch.setattr(firms_mod, "PROJECT_ROOT", tmp_path)
+
+        with pytest.warns(UserWarning, match="Unknown FIRMS folder"):
+            result = list_available_firms(country="Spain")
+
+        assert result[0]["sensor"] == "weird"
