@@ -17,6 +17,9 @@ dependencies = [
     "shapely",
     "pyyaml",
     "requests",
+    "requests-cache",
+    "retry-requests",
+    "openmeteo-requests",
 ]
 
 [project.optional-dependencies]
@@ -24,7 +27,18 @@ dev = [
     "pytest",
     "mypy",
     "ruff",
+    "ipykernel",
+    "nbformat",
+    "nbclient",
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: real network calls to Open-Meteo (excluded by default; run with -m integration)",
+]
+# Excluded by default: a plain `pytest tests/` never spends API quota.
+# Override with `pytest -m integration` (the CLI -m wins over addopts).
+addopts = "-m 'not integration'"

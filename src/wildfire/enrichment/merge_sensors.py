@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from wildfire.config import load_config
+from wildfire.config import PROJECT_ROOT, load_config
 from wildfire.data.firms import load_all_firms
 from wildfire.processing.confidence import add_unified_confidence
 from wildfire.processing.validation import validate_firms
@@ -34,6 +34,12 @@ def merge_viirs_modis(
     if df.empty:
         return df
 
+    problems = validate_firms(df)
+    if problems:
+        print("merge_viirs_modis validation warnings:")
+        for problem in problems:
+            print(f"  - {problem}")
+
     df = add_unified_confidence(df)
     return df
 
@@ -57,7 +63,7 @@ def save_merged(df: pd.DataFrame, country: str = "Spain", year: int | None = Non
         Path to the saved CSV file.
     """
     config = load_config()
-    out_dir = Path(config["output"]["merged"])
+    out_dir = PROJECT_ROOT / Path(config["output"]["merged"])
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if year is not None:
@@ -91,7 +97,7 @@ def load_merged(country: str = "Spain", year: int | None = None) -> pd.DataFrame
         If the merged CSV file does not exist.
     """
     config = load_config()
-    out_dir = Path(config["output"]["merged"])
+    out_dir = PROJECT_ROOT / Path(config["output"]["merged"])
 
     if year is not None:
         filename = f"firms_{country.lower()}_{year}_merged.csv"

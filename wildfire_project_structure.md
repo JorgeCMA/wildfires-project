@@ -95,8 +95,7 @@ wildfire-project/
 ├── scripts/
 │   ├── merge_firms.py                   # Merge VIIRS + MODIS
 │   ├── enrich_with_clc.py               # Run CLCPlus enrichment
-│   ├── enrich_with_weather.py           # Run weather enrichment
-│   └── build_dataset.py                 # Assemble final dataset
+│   └── enrich_with_weather.py           # Run weather enrichment (legacy)
 │
 ├── tests/
 │   ├── test_firms.py
@@ -311,8 +310,7 @@ wildfire-project/
 ├── scripts/
 │   ├── merge_firms.py                   # Combina VIIRS + MODIS
 │   ├── enrich_with_clc.py               # Ejecuta enriquecimiento CLCPlus
-│   ├── enrich_with_weather.py           # Ejecuta enriquecimiento climático
-│   └── build_dataset.py                 # Ensambla dataset final
+│   └── enrich_with_weather.py           # Ejecuta enriquecimiento climático (legacy)
 │
 ├── tests/
 │   ├── test_firms.py

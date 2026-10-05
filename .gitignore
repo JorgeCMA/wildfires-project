@@ -13,7 +13,8 @@ build/
 venv/
 env/
 Lib/
-Scripts/
+.venv/Scripts/
+venv/Scripts/
 share/
 pyvenv.cfg
 
@@ -30,15 +31,11 @@ pyvenv.cfg
 .DS_Store
 Thumbs.db
 
-# Data — FIRMS raw CSVs are large and placed manually, not tracked
-data/raw/firms/
-
 # Data — CLCPlus tiles ARE tracked (real project data)
 # Only ignore the original download zip (too large for git)
 data/raw/clcplus/**/Orignal_Data_*.zip
 
 # Data — processed outputs
-data/processed/*/
 !data/processed/*/.gitkeep
 
 # Environment
@@ -50,3 +47,5 @@ scripts/*.exe
 
 # Test/cache
 .pytest_cache/
+.cache*
+data/processed/enriched/firms_spain_enriched_backup.csv

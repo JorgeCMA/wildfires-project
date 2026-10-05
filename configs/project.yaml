@@ -26,10 +26,32 @@ clcplus:
   validity_period: "2023-2025"
   countries:
     - Spain
+  neighborhood:
+    enabled: true
+    rings: [1, 2]
 
 openmeteo:
   source: Open-Meteo
   base_url: "https://archive-api.open-meteo.com/v1/archive"
+  # Número de filas (detecciones) que se envían en cada consulta por lotes.
+  # Fácil de editar para probar hasta dónde aguanta la API.
+  # Vive fuera de batch_query para que NO se envíe como parámetro HTTP.
+  batch_rows: 500
+  # Pausa proactiva (segundos) entre lotes correctos en
+  # run_weather_enrichment. 0 = solo reactiva (solo espera tras un 429).
+  # 450 medido por scripts/probe_openmeteo_weight.py (peso ~700/lote de
+  # 500 filas: manda el límite horario, 3600/8 = 450 s; el/minuto admite 1).
+  batch_interval_seconds: 450
+  # Margen añadido sobre la frontera UTC (minuto/hora) antes de reintentar
+  # tras un 429: el contador del servidor se limpia en la frontera, no la
+  # petición, así que damos un margen para no caer en la ventana vieja.
+  minutely_buffer_seconds: 5
+  hourly_buffer_seconds: 10
+  # Espera fija tras "Too many concurrent requests" (segundos).
+  concurrent_backoff_seconds: 5
+  # Reintentos máximos seguidos del mismo límite (sin lote correcto
+  # intercalado) antes de parar limpio en vez de buclear para siempre.
+  max_consecutive_waits: 3
   hourly_variables:
     - temperature_2m
     - relative_humidity_2m
@@ -37,11 +59,63 @@ openmeteo:
     - wind_direction_10m
     - precipitation
     - shortwave_radiation
+  # Opciones fijas de la consulta por lotes multi-ubicación (SDK openmeteo-requests).
+  # Una sola petición devuelve una respuesta por cada par lat/lon.
+  # Coordenadas y fechas salen de las filas del merged (3 primeras filas, con
+  # acq_date como start/end): tests/test_openmeteo_requests.py
+  batch_query:
+    models: "best_match"
+    # GMT (UTC): las horas de FIRMS (acq_date/acq_time) están en UTC, así que
+    # el clima tiene que estarlo también. Es además el valor por defecto de la
+    # API. Nunca "auto": devuelve offsets incorrectos (7200 para Madrid en
+    # enero) y desplaza la ventana un hora.
+    timezone: "GMT"
+    hourly:
+      - temperature_2m
+      - precipitation
+      - surface_pressure
+      - relative_humidity_2m
+      - wind_speed_10m
+      - wind_direction_10m
+      - wind_gusts_10m
+      - rain
+      - et0_fao_evapotranspiration
+      - shortwave_radiation
+      - boundary_layer_height
+      - is_day
+      - vapour_pressure_deficit
+      - soil_moisture_0_to_7cm
+      - soil_moisture_7_to_28cm
+
+# Presupuestos por comunidad autónoma (datos en data/raw/ccaa/).
+# Regional budgets (prevention + extinction) from data/raw/ccaa/.
+ccaa:
+  # Relativo a la raíz del proyecto (PROJECT_ROOT). / Project-root-relative.
+  path: "data/raw/ccaa/Datos_CCAA_Presupuesto - Datos y Variables Model.csv"
+  # n de la ventana móvil que se suma por fila en `add_ccaa_budget_sums`:
+  # [año_fila - n + 1 .. año_fila] anclado al año de acq_date.
+  # n=3 → 2024 suma 2022+2023+2024; 2023 suma 2021+2022+2023.
+  # Años fuera del rango del fichero (2020-2025) no aportan nada;
+  # ventana sin ningún año disponible → NaN (nunca 0).
+  years_window: 3
+  # Límites de las Comunidades Autónomas (GeoJSON subido por el equipo).
+  # CCAA boundaries (team-provided GeoJSON). Relativo a PROJECT_ROOT;
+  # un valor absoluto también vale (Path / absoluto → absoluto).
+  boundaries_path: "data/raw/ccaa/spain-communities.geojson"
+  # Campo del GeoJSON con el nombre de la región. Sus valores se traducen a
+  # los nombres EXACTOS del CSV de presupuestos con REGION_NAME_MAP
+  # (geo/regions.py), p. ej. "Castilla-Leon" → "Castilla y León".
+  boundaries_name_field: "name"
+  # Respaldo en metros para puntos sin polígono que los contenga
+  # (costa / frontera PT-FR): sjoin_nearest con esta distancia máxima.
+  # Más lejos → ccaa NaN (y luego sumas NaN). Sin respaldo: 0.
+  nearest_max_distance_m: 2000
 
 output:
   merged: data/processed/merged
   enriched: data/processed/enriched
   predictions: data/processed/predictions
+  processed: data/processed
 
 paths:
   notebooks: notebooks

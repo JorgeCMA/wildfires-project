@@ -1,16 +1,40 @@
 """Enrichment modules."""
 
-from .clc_enrichment import enrich_with_clc, load_enriched, save_enriched
-from .merge_sensors import load_merged, merge_viirs_modis, save_merged
+from .clc_enrichment import (
+    CLC_LABELS,
+    NEIGHBORHOOD_RINGS,
+    enrich_with_clc,
+    load_enriched,
+    save_enriched,
+)
+from .merge_sensors import (
+    load_merged,
+    merge_viirs_modis,
+    save_merged,
+)
+from .weather_batch import (
+    WeatherBatchStatus,
+    fetch_next_batch,
+    finalize_weather_csv,
+    load_weather_for_clc,
+    run_weather_enrichment,
+)
 from .weather_enrichment import enrich_with_weather, save_weather_enriched
 
 __all__ = [
-    "merge_viirs_modis",
-    "save_merged",
-    "load_merged",
+    "CLC_LABELS",
+    "NEIGHBORHOOD_RINGS",
+    "WeatherBatchStatus",
     "enrich_with_clc",
-    "save_enriched",
-    "load_enriched",
     "enrich_with_weather",
+    "fetch_next_batch",
+    "finalize_weather_csv",
+    "load_enriched",
+    "load_merged",
+    "load_weather_for_clc",
+    "merge_viirs_modis",
+    "run_weather_enrichment",
+    "save_enriched",
+    "save_merged",
     "save_weather_enriched",
 ]

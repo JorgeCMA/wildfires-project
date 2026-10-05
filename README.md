@@ -134,7 +134,8 @@ enriched = enrich_with_clc(merged)
 python scripts/merge_firms.py                    # Merge VIIRS + MODIS
 python scripts/enrich_with_clc.py                # Add CLCPlus land cover
 python scripts/enrich_with_weather.py --input enriched.csv  # Add weather
-python scripts/build_dataset.py                  # Assemble final dataset
+python scripts/build_dataset.py
+python scripts/peek_firms.py                  # Quick FIRMS + CLC preview (writes data/processed/firms_clc.csv)                  # Assemble final dataset
 ```
 
 ## Data Sources
@@ -151,7 +152,7 @@ The final dataset follows FIRMS columns expanded with enrichment:
 
 - **FIRMS core**: `latitude`, `longitude`, `acq_date`, `acq_time`, `satellite`, `sensor`, `brightness`, `brightness_ir`, `scan`, `track`, `frp`, `daynight`
 - **Confidence**: `confidence_cat`, `confidence_num`, `confidence_og_cat`, `confidence_og_num`
-- **CLCPlus**: `clc_class`, `clc_label`
+- **CLCPlus**: `clc_class`, `clc_name`
 - **Weather**: `temperature_2m`, `relative_humidity_2m`, `wind_speed_10m`, `wind_direction_10m`, `precipitation`, `shortwave_radiation`
 
 ## Architecture Principles
@@ -296,7 +297,8 @@ enriched = enrich_with_clc(merged)
 python scripts/merge_firms.py                    # Combinar VIIRS + MODIS
 python scripts/enrich_with_clc.py                # Añadir cobertura CLCPlus
 python scripts/enrich_with_weather.py --input enriched.csv  # Añadir clima
-python scripts/build_dataset.py                  # Ensamblar dataset final
+python scripts/build_dataset.py
+python scripts/peek_firms.py                  # Quick FIRMS + CLC preview (writes data/processed/firms_clc.csv)                  # Ensamblar dataset final
 ```
 
 ## Fuentes de datos
@@ -313,7 +315,7 @@ El dataset final sigue las columnas de FIRMS expandidas con enriquecimiento:
 
 - **Núcleo FIRMS**: `latitude`, `longitude`, `acq_date`, `acq_time`, `satellite`, `sensor`, `brightness`, `brightness_ir`, `scan`, `track`, `frp`, `daynight`
 - **Confianza**: `confidence_cat`, `confidence_num`, `confidence_og_cat`, `confidence_og_num`
-- **CLCPlus**: `clc_class`, `clc_label`
+- **CLCPlus**: `clc_class`, `clc_name`
 - **Clima**: `temperature_2m`, `relative_humidity_2m`, `wind_speed_10m`, `wind_direction_10m`, `precipitation`, `shortwave_radiation`
 
 ## Principios de arquitectura

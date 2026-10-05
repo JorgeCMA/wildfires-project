@@ -2,43 +2,12 @@
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import pandas as pd
 
-from wildfire.config import load_config
-
-VIIRS_COLUMNS = {
-    "latitude": float,
-    "longitude": float,
-    "bright_ti4": float,
-    "scan": float,
-    "track": float,
-    "acq_date": str,
-    "acq_time": str,
-    "satellite": str,
-    "confidence": str,
-    "version": str,
-    "bright_ti5": float,
-    "frp": float,
-    "daynight": str,
-}
-
-MODIS_COLUMNS = {
-    "latitude": float,
-    "longitude": float,
-    "brightness": float,
-    "scan": float,
-    "track": float,
-    "acq_date": str,
-    "acq_time": str,
-    "satellite": str,
-    "confidence": str,
-    "version": str,
-    "bright_t31": float,
-    "frp": float,
-    "daynight": str,
-}
+from wildfire.config import PROJECT_ROOT, load_config
 
 VIIRS_COLS_TO_RENAME = {
     "bright_ti4": "brightness",
@@ -59,15 +28,18 @@ SENSOR_FOLDER_NAMES = {
 def _firms_dir(country: str, year: int, sensor: str) -> Path:
     """Build the directory path for a FIRMS sensor/year/country."""
     config = load_config()
-    sensor_path = SENSOR_FOLDER_NAMES.get(sensor.lower(), sensor)
-    return Path(config["data"]["raw"]) / "firms" / country / str(year) / sensor_path
+    # La config manda (firms.sensor_folders); el dict del código es el
+    # respaldo si falta la clave. Deben coincidir (ver tests).
+    folders = config.get("firms", {}).get("sensor_folders", SENSOR_FOLDER_NAMES)
+    sensor_path = folders.get(sensor.lower(), sensor)
+    return PROJECT_ROOT / config["data"]["raw"] / "firms" / country / str(year) / sensor_path
 
 
 def _find_csv_in_dir(directory: Path) -> Path | None:
-    """Find the first CSV file in a directory."""
+    """Find the first CSV file in a directory (sorted: deterministic)."""
     if not directory.exists():
         return None
-    csvs = list(directory.glob("*.csv"))
+    csvs = sorted(directory.glob("*.csv"))
     return csvs[0] if csvs else None
 
 
@@ -153,14 +125,20 @@ def load_all_firms(
         sensors = ["modis", "viirs_snpp", "viirs_noaa20"]
 
     frames: list[pd.DataFrame] = []
+    skipped: list[str] = []
     for year in years:
         for sensor in sensors:
             try:
                 df = load_firms(country=country, year=year, sensor=sensor)
                 frames.append(df)
             except FileNotFoundError:
+                skipped.append(f"{year}/{sensor}")
                 continue
 
+    if skipped:
+        warnings.warn(
+            f"Missing FIRMS data for {skipped}; merged without them"
+        )
     if not frames:
         return pd.DataFrame()
 
@@ -179,7 +157,7 @@ def list_available_firms(country: str = "Spain") -> list[dict[str, str | int]]:
         Each dict has keys ``country``, ``year``, ``sensor``, ``path``.
     """
     config = load_config()
-    base_dir = Path(config["data"]["raw"]) / "firms" / country
+    base_dir = PROJECT_ROOT / Path(config["data"]["raw"]) / "firms" / country
     results: list[dict[str, str | int]] = []
 
     if not base_dir.exists():
@@ -199,6 +177,8 @@ def list_available_firms(country: str = "Spain") -> list[dict[str, str | int]]:
             # Use relative path from year_dir to match SENSOR_FOLDER_NAMES keys
             rel_dir = csv_path.parent.relative_to(year_dir).as_posix().lower()
             sensor_key = folder_to_sensor.get(rel_dir, rel_dir)
+            if rel_dir not in folder_to_sensor:
+                warnings.warn(f"Unknown FIRMS folder {rel_dir!r}; using it as sensor key")
             results.append({
                 "country": country,
                 "year": year,
