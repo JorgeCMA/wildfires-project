@@ -40,7 +40,7 @@ CSV chain under `data/processed/` — every name denotes its contents, each feed
 2. `enriched/firms_spain_weather_partial.csv` — +15 weather, resume point (in-progress)
 3. `enriched/firms_spain_weather.csv` — completed weather (written by `finalize_weather_csv`)
 4. `enriched/firms_spain_weather_clc.csv` — + `clc_class`, neighbors, `clc_uniform_surroundings`
-5. `enriched/firms_spain_final.csv` — + `ccaa`, `sum_prevention`, `sum_extinction` (modeling input; 46,500×50 as of 2026-10-02 — re-run Celdas 3→4→6 after the weather download completes for all 47,505 rows)
+5. `enriched/firms_spain_full_enrichment.csv` — + `ccaa`, `prevention_current`, `prevention_prev{N}`, `extinction_prev{N}` (full-enrichment output, 51 cols after regen; N = `ccaa.budget_lookback_years`, extinction excludes the current year — no leakage; `firms_spain_final.csv` is reserved for the post-exploration/dedup modeling input)
 
 - `src/wildfire/data/` — FIRMS CSV loading (`firms.py`), CLCPlus tile listing (`clc.py`),
   Open-Meteo single-row client (`openmeteo.py`), regional budget CSV (`ccaa.py`)
@@ -109,7 +109,7 @@ and `test_clc.py` with different signatures (plus a differently-named variant in
 `notebooks/01_recopilacion_datos_limpieza.ipynb` is the pipeline notebook: one cell per step
 (Celda 1 merge → Celda 2 weather [fully commented, run the script externally] →
 Celda 3 `load_weather_for_clc` → Celda 4 CLC → Celda 5 sealed TODO [drop `clc_class == 1`?]
-→ Celda 6 `assign_ccaa` + `add_ccaa_budget_sums` → `firms_spain_final.csv`).
+→ Celda 6 `assign_ccaa` + `add_ccaa_budget_sums` → `firms_spain_full_enrichment.csv`).
 Comments are bilingual ES/EN; cells only orchestrate — acquisition logic >5 lines lives in `src/`.
 
 ## Gotchas
@@ -156,6 +156,6 @@ Comments are bilingual ES/EN; cells only orchestrate — acquisition logic >5 li
   39,500/47,505, then 32,500/47,505, stopped on the daily limit 2026-10-01; download still Jorge's job).
   Resume = re-run `python scripts/enrich_weather_batch.py`
   (exit 0 publishes `firms_spain_weather.csv`). After it completes, re-run notebook
-  Celdas 3→4→6 to refresh `firms_spain_weather_clc.csv` + `firms_spain_final.csv`
+  Celdas 3→4→6 to refresh `firms_spain_weather_clc.csv` + `firms_spain_full_enrichment.csv`
   to all 47,505 rows — no code changes (`load_weather_for_clc` picks the completed
   file automatically).

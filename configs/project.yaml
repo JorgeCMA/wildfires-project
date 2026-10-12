@@ -92,12 +92,14 @@ openmeteo:
 ccaa:
   # Relativo a la raíz del proyecto (PROJECT_ROOT). / Project-root-relative.
   path: "data/raw/ccaa/Datos_CCAA_Presupuesto - Datos y Variables Model.csv"
-  # n de la ventana móvil que se suma por fila en `add_ccaa_budget_sums`:
-  # [año_fila - n + 1 .. año_fila] anclado al año de acq_date.
-  # n=3 → 2024 suma 2022+2023+2024; 2023 suma 2021+2022+2023.
+  # Años previos que se suman por fila en `add_ccaa_budget_sums`:
+  # prevención del año de la fila + suma de los N anteriores;
+  # extinción SOLO de los N anteriores (el año en curso gasta durante el
+  # año → incluirlo filtraría información desconocida en el momento del
+  # fuego). N=3 → prev3 suma [año-3 .. año-1].
   # Años fuera del rango del fichero (2020-2025) no aportan nada;
   # ventana sin ningún año disponible → NaN (nunca 0).
-  years_window: 3
+  budget_lookback_years: 3
   # Límites de las Comunidades Autónomas (GeoJSON subido por el equipo).
   # CCAA boundaries (team-provided GeoJSON). Relativo a PROJECT_ROOT;
   # un valor absoluto también vale (Path / absoluto → absoluto).
@@ -122,3 +124,20 @@ paths:
   scripts: scripts
   configs: configs
   confidence_thresholds: configs/confidence_thresholds.yaml
+
+# Columnas que se eliminan al producir el dataframe de modelado.
+# Modeling columns: dropped when producing the modeling dataframe.
+modeling:
+  # Blocklist (nombres exactos de columna). Los nombres ausentes se ignoran,
+  # así la misma lista vale antes del dedup (sin `dupe_flag`) y después.
+  drop_columns:
+    - track
+    - satellite
+    - instrument
+    - confidence
+    - version
+    - sensor
+    - country
+    - confidence_og_num
+    - confidence_og_cat
+    - dupe_flag

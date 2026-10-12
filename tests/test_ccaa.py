@@ -9,12 +9,14 @@ from wildfire.config import PROJECT_ROOT
 from wildfire.data.ccaa import (
     EXTINCTION_COL,
     PREVENTION_COL,
+    PREVENTION_CURRENT_COL,
     REGION_COL,
-    SUM_EXTINCTION_COL,
-    SUM_PREVENTION_COL,
     YEAR_COL,
     add_ccaa_budget_sums,
+    budget_sum_columns,
+    extinction_prev_col,
     load_ccaa_budget,
+    prevention_prev_col,
 )
 
 # Ruta real del fichero de presupuestos (tracked en git).
@@ -102,8 +104,8 @@ class TestLoadCcaaBudget:
 
 
 class TestAddCcaaBudgetSums:
-    def test_window_relative_to_row_year(self):
-        # prevención = año → la suma distingue qué años entran en la ventana
+    def test_windows_split_current_and_prev(self):
+        # prevención = año → la suma distingue qué años entran en cada ventana
         budget = _make_budget(
             [
                 ("Andalucía", year, float(year), float(year))
@@ -113,10 +115,26 @@ class TestAddCcaaBudgetSums:
         df = _make_df(
             [("Andalucía", "2024-07-15"), ("Andalucía", "2023-01-01")],
         )
-        out = add_ccaa_budget_sums(df, n=3, budget=budget)
-        # 2024 → 2022+2023+2024; 2023 → 2021+2022+2023
-        assert out[SUM_PREVENTION_COL].tolist() == [6069.0, 6066.0]
-        assert out[SUM_EXTINCTION_COL].tolist() == [6069.0, 6066.0]
+        out = add_ccaa_budget_sums(df, lookback_years=3, budget=budget)
+        # current = año de la fila; prev3 = los 3 anteriores
+        assert out[PREVENTION_CURRENT_COL].tolist() == [2024.0, 2023.0]
+        assert out[prevention_prev_col(3)].tolist() == [6066.0, 6063.0]
+        assert out[extinction_prev_col(3)].tolist() == [6066.0, 6063.0]
+
+    def test_extinction_excludes_current_even_in_december(self):
+        # la fuga: una fila de diciembre no debe ver la extinción del año
+        budget = _make_budget(
+            [
+                ("Madrid", 2022, 1.0, 100.0),
+                ("Madrid", 2023, 1.0, 200.0),
+                ("Madrid", 2024, 1.0, 300.0),
+            ]
+        )
+        df = _make_df([("Madrid", "2024-12-31")])
+        out = add_ccaa_budget_sums(df, lookback_years=2, budget=budget)
+        assert out[PREVENTION_CURRENT_COL].iloc[0] == 1.0
+        assert out[prevention_prev_col(2)].iloc[0] == 2.0
+        assert out[extinction_prev_col(2)].iloc[0] == 300.0  # 100+200, sin 2024
 
     def test_window_clipped_at_budget_start(self):
         budget = _make_budget(
@@ -126,43 +144,66 @@ class TestAddCcaaBudgetSums:
             ]
         )
         df = _make_df([("Andalucía", "2023-06-01")])
-        out = add_ccaa_budget_sums(df, n=5, budget=budget)
-        # ventana 2019..2023, pero 2019 no existe → solo 2020+2021+2022+2023
-        assert out[SUM_PREVENTION_COL].iloc[0] == 8086.0
+        out = add_ccaa_budget_sums(df, lookback_years=5, budget=budget)
+        # prev5 = 2018..2022, pero 2018-2019 no existen → solo 2020+2021+2022
+        assert out[PREVENTION_CURRENT_COL].iloc[0] == 2023.0
+        assert out[prevention_prev_col(5)].iloc[0] == 6063.0
+        assert out[extinction_prev_col(5)].iloc[0] == 6063.0
 
-    def test_n_one_is_single_year(self):
+    def test_lookback_one_is_single_prior_year(self):
+        budget = _make_budget(
+            [("Madrid", 2023, 10.0, 20.0), ("Madrid", 2024, 11.0, 21.0)]
+        )
+        df = _make_df([("Madrid", "2024-08-01")])
+        out = add_ccaa_budget_sums(df, lookback_years=1, budget=budget)
+        assert out[PREVENTION_CURRENT_COL].iloc[0] == 11.0
+        assert out[prevention_prev_col(1)].iloc[0] == 10.0
+        assert out[extinction_prev_col(1)].iloc[0] == 20.0
+
+    def test_column_names_follow_lookback(self):
+        assert budget_sum_columns(2) == [
+            PREVENTION_CURRENT_COL,
+            "prevention_prev2",
+            "extinction_prev2",
+        ]
         budget = _make_budget([("Madrid", 2024, 10.0, 20.0)])
         df = _make_df([("Madrid", "2024-08-01")])
-        out = add_ccaa_budget_sums(df, n=1, budget=budget)
-        assert out[SUM_PREVENTION_COL].iloc[0] == 10.0
-        assert out[SUM_EXTINCTION_COL].iloc[0] == 20.0
+        out = add_ccaa_budget_sums(df, lookback_years=2, budget=budget)
+        assert out.columns.tolist() == ["ccaa", "acq_date", *budget_sum_columns(2)]
 
-    def test_default_n_from_config(self, monkeypatch: pytest.MonkeyPatch):
+    def test_default_lookback_from_config(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(
-            "wildfire.data.ccaa.load_config", lambda: {"ccaa": {"years_window": 2}}
+            "wildfire.data.ccaa.load_config",
+            lambda: {"ccaa": {"budget_lookback_years": 2}},
         )
         budget = _make_budget(
-            [("Madrid", year, float(year), 0.0) for year in (2023, 2024)]
+            [("Madrid", year, float(year), 0.0) for year in (2022, 2023, 2024)]
         )
         df = _make_df([("Madrid", "2024-08-01")])
         out = add_ccaa_budget_sums(df, budget=budget)
-        assert out[SUM_PREVENTION_COL].iloc[0] == 4047.0  # 2023 + 2024
+        assert budget_sum_columns() == [
+            PREVENTION_CURRENT_COL,
+            "prevention_prev2",
+            "extinction_prev2",
+        ]
+        assert out[PREVENTION_CURRENT_COL].iloc[0] == 2024.0
+        assert out["prevention_prev2"].iloc[0] == 4045.0  # 2022 + 2023
 
     def test_unknown_region_is_nan_not_zero(self):
         budget = _make_budget([("Madrid", 2024, 10.0, 20.0)])
         df = _make_df([("Atlántida", "2024-08-01")])
-        out = add_ccaa_budget_sums(df, n=1, budget=budget)
-        assert pd.isna(out[SUM_PREVENTION_COL].iloc[0])
-        assert pd.isna(out[SUM_EXTINCTION_COL].iloc[0])
+        out = add_ccaa_budget_sums(df, lookback_years=1, budget=budget)
+        assert pd.isna(out[PREVENTION_CURRENT_COL].iloc[0])
+        assert pd.isna(out[prevention_prev_col(1)].iloc[0])
+        assert pd.isna(out[extinction_prev_col(1)].iloc[0])
 
     def test_malformed_date_is_nan_not_crash(self):
         budget = _make_budget([("Madrid", 2024, 10.0, 20.0)])
         df = _make_df([("Madrid", "not-a-date"), ("Madrid", None)])
-        out = add_ccaa_budget_sums(df, n=1, budget=budget)
-        assert pd.isna(out[SUM_PREVENTION_COL].iloc[0])
-        assert pd.isna(out[SUM_PREVENTION_COL].iloc[1])
-        assert pd.isna(out[SUM_EXTINCTION_COL].iloc[0])
-        assert pd.isna(out[SUM_EXTINCTION_COL].iloc[1])
+        out = add_ccaa_budget_sums(df, lookback_years=1, budget=budget)
+        for col in budget_sum_columns(1):
+            assert pd.isna(out[col].iloc[0])
+            assert pd.isna(out[col].iloc[1])
 
     def test_duplicated_budget_rows_warn_and_keep_first(self):
         budget = _make_budget(
@@ -173,45 +214,46 @@ class TestAddCcaaBudgetSums:
         )
         df = _make_df([("Madrid", "2024-08-01")])
         with pytest.warns(UserWarning, match="duplicated"):
-            out = add_ccaa_budget_sums(df, n=1, budget=budget)
-        assert out[SUM_PREVENTION_COL].iloc[0] == 10.0
-        assert out[SUM_EXTINCTION_COL].iloc[0] == 20.0
+            out = add_ccaa_budget_sums(df, lookback_years=1, budget=budget)
+        assert out[PREVENTION_CURRENT_COL].iloc[0] == 10.0
+        assert out[prevention_prev_col(1)].iloc[0] == 10.0 or pd.isna(
+            out[prevention_prev_col(1)].iloc[0]
+        )  # 2023 no existe → NaN
 
     def test_missing_region_column_raises(self):
         df = pd.DataFrame({"acq_date": ["2024-01-01"]})
         with pytest.raises(KeyError, match="ccaa"):
-            add_ccaa_budget_sums(df, n=1, budget=_make_budget([]))
+            add_ccaa_budget_sums(df, lookback_years=1, budget=_make_budget([]))
 
     def test_missing_acq_date_column_raises(self):
         df = pd.DataFrame({"ccaa": ["Madrid"]})
         with pytest.raises(KeyError, match="acq_date"):
-            add_ccaa_budget_sums(df, n=1, budget=_make_budget([]))
+            add_ccaa_budget_sums(df, lookback_years=1, budget=_make_budget([]))
 
-    def test_invalid_n_raises(self):
+    def test_invalid_lookback_raises(self):
         df = _make_df([("Madrid", "2024-08-01")])
         with pytest.raises(ValueError, match="integer >= 1"):
-            add_ccaa_budget_sums(df, n=0, budget=_make_budget([]))
+            add_ccaa_budget_sums(df, lookback_years=0, budget=_make_budget([]))
 
-    def test_non_integer_n_raises(self):
+    def test_non_integer_lookback_raises(self):
         df = _make_df([("Madrid", "2024-08-01")])
         with pytest.raises(ValueError, match="integer >= 1"):
-            add_ccaa_budget_sums(df, n=2.5, budget=_make_budget([]))
+            add_ccaa_budget_sums(df, lookback_years=2.5, budget=_make_budget([]))
         with pytest.raises(ValueError, match="integer >= 1"):
-            add_ccaa_budget_sums(df, n=True, budget=_make_budget([]))
+            add_ccaa_budget_sums(df, lookback_years=True, budget=_make_budget([]))
 
     def test_does_not_mutate_input_and_keeps_index(self):
-        budget = _make_budget([("Madrid", 2024, 10.0, 20.0)])
+        budget = _make_budget(
+            [("Madrid", 2023, 10.0, 20.0), ("Madrid", 2024, 11.0, 21.0)]
+        )
         df = _make_df([("Madrid", "2024-08-01"), ("Madrid", "2023-08-01")])
         df.index = [5, 7]
         original_columns = list(df.columns)
-        out = add_ccaa_budget_sums(df, n=1, budget=budget)
+        out = add_ccaa_budget_sums(df, lookback_years=1, budget=budget)
 
         assert list(df.columns) == original_columns  # entrada intacta
         assert out.index.tolist() == [5, 7]
-        assert out.columns.tolist() == original_columns + [
-            SUM_PREVENTION_COL,
-            SUM_EXTINCTION_COL,
-        ]
+        assert out.columns.tolist() == original_columns + budget_sum_columns(1)
 
     def test_mixed_years_per_row(self):
         budget = _make_budget(
@@ -228,6 +270,10 @@ class TestAddCcaaBudgetSums:
                 ("Madrid", "2023-01-01"),
             ]
         )
-        out = add_ccaa_budget_sums(df, n=1, budget=budget)
-        assert out[SUM_PREVENTION_COL].tolist() == [2.0, 5.0, 1.0]
-        assert out[SUM_EXTINCTION_COL].tolist() == [20.0, 50.0, 10.0]
+        out = add_ccaa_budget_sums(df, lookback_years=1, budget=budget)
+        assert out[PREVENTION_CURRENT_COL].tolist() == [2.0, 5.0, 1.0]
+        # 2023 de Madrid / sin 2023 gallego / sin 2022 → NaN donde no hay año
+        assert out[prevention_prev_col(1)].tolist()[0] == 1.0
+        assert pd.isna(out[prevention_prev_col(1)].iloc[1])
+        assert pd.isna(out[prevention_prev_col(1)].iloc[2])
+        assert out[extinction_prev_col(1)].tolist()[0] == 10.0

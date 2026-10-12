@@ -10,9 +10,8 @@ from shapely.geometry import box
 from wildfire.config import PROJECT_ROOT
 from wildfire.data.ccaa import (
     REGION_COL,
-    SUM_EXTINCTION_COL,
-    SUM_PREVENTION_COL,
     add_ccaa_budget_sums,
+    budget_sum_columns,
     load_ccaa_budget,
 )
 from wildfire.geo.regions import (
@@ -233,6 +232,6 @@ class TestAssignCcaaRealData:
         )
         out = add_ccaa_budget_sums(assign_ccaa(df))
         assert out[CCAA_COL].iloc[0] == "Madrid"
-        # ventana 2022+2023+2024 de Madrid → importe real, no NaN
-        assert out[SUM_PREVENTION_COL].notna().iloc[0]
-        assert out[SUM_EXTINCTION_COL].notna().iloc[0]
+        # Madrid 2024: prevención actual + previas no NaN (fichero real 2020-2025)
+        for col in budget_sum_columns():
+            assert out[col].notna().iloc[0]

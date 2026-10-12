@@ -145,7 +145,8 @@ def validate_enriched_openmeteo(df: pd.DataFrame) -> list[str]:
 def validate_enriched_ccaa(df: pd.DataFrame) -> list[str]:
     """Run quality checks for the CCAA region + budget step.
 
-    Checks that ``ccaa`` exists and that the rolling budget sums exist;
+    Checks that ``ccaa`` exists and that the budget columns exist
+    (``prevention_current`` + ``prev{N}`` sums, N from config);
     missing sums are legitimate for regions without budget (Ceuta/Melilla),
     so they only inform with a count.
 
@@ -159,7 +160,11 @@ def validate_enriched_ccaa(df: pd.DataFrame) -> list[str]:
     list[str]
         Validation warnings.
     """
-    cols = ["ccaa", "sum_prevention", "sum_extinction"]
+    # Importación diferida: mismo motivo que en `_expected_clc_fields`
+    # (evitar ciclos de importación con `enrichment`).
+    from wildfire.data.ccaa import budget_sum_columns
+
+    cols = ["ccaa", *budget_sum_columns()]
     return _missing_or_gappy(df, cols, "CCAA/budget gap")
 
 

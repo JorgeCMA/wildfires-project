@@ -3,6 +3,7 @@
 from .ccaa import add_ccaa_budget_sums, load_ccaa_budget
 from .clc import list_clc_tiles
 from .firms import list_available_firms, load_all_firms, load_firms
+from .io import load_csv, save_csv
 from .openmeteo import fetch_weather
 
 __all__ = [
@@ -12,5 +13,7 @@ __all__ = [
     "list_clc_tiles",
     "load_all_firms",
     "load_ccaa_budget",
+    "load_csv",
     "load_firms",
+    "save_csv",
 ]

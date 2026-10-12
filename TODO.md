@@ -16,7 +16,7 @@
 | 2 | `enriched/firms_spain_weather_partial.csv` | `scripts/enrich_weather_batch.py` (Jorge runs it) | partial 46,500/47,505 |
 | 3 | `enriched/firms_spain_weather.csv` | `finalize_weather_csv` when download completes | pending |
 | 4 | `enriched/firms_spain_weather_clc.csv` | Celda 3 `load_weather_for_clc` → Celda 4 `enrich_with_clc` + `save_enriched(filename=…)` | ✓ 46,500×47 (backfilled: `_tile_key` fix recovered 102 Canarias rows) |
-| 5 | `enriched/firms_spain_final.csv` | Celda 6 `assign_ccaa` → `add_ccaa_budget_sums` → `save_enriched(filename=…)` | ✓ 46,500×50 (2026-10-02; refresh to 47,505 after the download) |
+| 5 | `enriched/firms_spain_full_enrichment.csv` | Celda 6 `assign_ccaa` → `add_ccaa_budget_sums` → `save_enriched(filename=…)` | ✓ 46,500×50 (2026-10-02; refresh to 47,505 after the download; `firms_spain_final.csv` reserved for the post-exploration/dedup modeling input; sums now `prevention_current` + `prev{N}` — regen pending) |
 
 Functions live in `src/wildfire/` (`enrichment/merge_sensors.py`, `enrichment/weather_batch.py`,
 `enrichment/clc_enrichment.py`, `data/ccaa.py`); notebook cells only orchestrate.

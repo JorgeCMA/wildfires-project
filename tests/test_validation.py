@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from wildfire.config import PROJECT_ROOT
+from wildfire.data.ccaa import PREVENTION_CURRENT_COL, budget_sum_columns
 from wildfire.enrichment.weather_batch import weather_fields
 from wildfire.processing.validation import (
     validate_enriched,
@@ -235,22 +236,28 @@ class TestValidateEnrichedCcaa:
 
     def test_full_final_stage_passes_clean(self):
         df = _make_firms_df(
-            ccaa=["Madrid"], sum_prevention=[10.0], sum_extinction=[20.0]
+            ccaa=["Madrid"],
+            **{col: [10.0] for col in budget_sum_columns()},
         )
         assert validate_enriched_ccaa(df) == []
 
     def test_nan_sums_are_informational_not_missing(self):
         # Ceuta/Melilla no tienen presupuesto: NaN legítimo, avisa con cuenta.
+        prev_p, prev_e = budget_sum_columns()[1:]
         df = _make_firms_df(
             n=2,
             ccaa=["Madrid", "Ceuta"],
-            sum_prevention=[10.0, np.nan],
-            sum_extinction=[20.0, np.nan],
+            **{
+                PREVENTION_CURRENT_COL: [10.0, np.nan],
+                prev_p: [10.0, np.nan],
+                prev_e: [20.0, np.nan],
+            },
         )
         warnings = validate_enriched_ccaa(df)
-        assert len(warnings) == 2
-        assert any("sum_prevention" in w and "1" in w for w in warnings)
-        assert any("sum_extinction" in w and "1" in w for w in warnings)
+        assert len(warnings) == 3
+        assert any(PREVENTION_CURRENT_COL in w and "1" in w for w in warnings)
+        assert any(prev_p in w and "1" in w for w in warnings)
+        assert any(prev_e in w and "1" in w for w in warnings)
 
 
 class TestValidateEnriched:
@@ -264,8 +271,8 @@ class TestValidateEnriched:
         for col, vals in _full_clc_df(n=1).items():
             df[col] = vals
         df["ccaa"] = ["Madrid"]
-        df["sum_prevention"] = [10.0]
-        df["sum_extinction"] = [20.0]
+        for col in budget_sum_columns():
+            df[col] = [10.0]
         assert validate_enriched(df) == []
 
     def test_firms_warning_included(self):
