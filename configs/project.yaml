@@ -113,6 +113,15 @@ ccaa:
   # Más lejos → ccaa NaN (y luego sumas NaN). Sin respaldo: 0.
   nearest_max_distance_m: 2000
 
+# PCA de variables meteorológicas (notebook 02, celda PCA).
+# Weather-variables PCA (notebook 02, PCA cell).
+# Fracción de varianza acumulada objetivo para elegir el número de
+# componentes (regla 80–90% + scree plot). La lee `load_target_variance()`
+# en `src/wildfire/processing/pca_weather.py`; `fit_weather_pca` conserva
+# los primeros k componentes con varianza acumulada >= este valor.
+pca:
+  target_variance: 0.90
+
 output:
   merged: data/processed/merged
   enriched: data/processed/enriched
@@ -141,3 +150,18 @@ modeling:
     - confidence_og_num
     - confidence_og_cat
     - dupe_flag
+  # Modelo de ocurrencia de incendios (fuego / no-fuego).
+  # Fire-occurrence model (fire / background) — ver
+  # `src/wildfire/processing/occurrence.py`. El objetivo es un ranking de
+  # riesgo (PR-AUC), no una probabilidad calibrada: la prevalencia la fija
+  # el muestreo de negativos, no la naturaleza.
+  occurrence:
+    # Negativos por cada positivo al muestrear días de fondo (background).
+    background_ratio: 2
+    # Semilla del muestreo y de los splits.
+    random_state: 42
+    # Grupos para validación bloqueada (leave-one-group-out): por temporada
+    # (año+trimestre) y por comunidad autónoma.
+    cv_groups:
+      - season
+      - ccaa

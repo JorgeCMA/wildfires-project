@@ -20,6 +20,8 @@ dependencies = [
     "requests-cache",
     "retry-requests",
     "openmeteo-requests",
+    "holidays",
+    "seaborn"
 ]
 
 [project.optional-dependencies]
