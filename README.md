@@ -135,7 +135,7 @@ python scripts/merge_firms.py                    # Merge VIIRS + MODIS
 python scripts/enrich_with_clc.py                # Add CLCPlus land cover
 python scripts/enrich_with_weather.py --input enriched.csv  # Add weather
 python scripts/build_dataset.py
-python scripts/peek_firms.py                  # Quick FIRMS + CLC preview (writes data/processed/firms_clc.csv)                  # Assemble final dataset
+python scripts/peek_firms.py                  # Quick FIRMS preview (prints summary, writes no file)
 ```
 
 ## Data Sources
@@ -298,7 +298,7 @@ python scripts/merge_firms.py                    # Combinar VIIRS + MODIS
 python scripts/enrich_with_clc.py                # Añadir cobertura CLCPlus
 python scripts/enrich_with_weather.py --input enriched.csv  # Añadir clima
 python scripts/build_dataset.py
-python scripts/peek_firms.py                  # Quick FIRMS + CLC preview (writes data/processed/firms_clc.csv)                  # Ensamblar dataset final
+python scripts/peek_firms.py                  # Vista rápida FIRMS (imprime resumen, no escribe archivo)
 ```
 
 ## Fuentes de datos

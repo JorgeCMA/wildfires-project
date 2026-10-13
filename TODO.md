@@ -13,10 +13,10 @@
 | # | File (`data/processed/…`) | Produced by | State |
 |---|---|---|---|
 | 1 | `merged/firms_spain_merged.csv` | Celda 1 `merge_viirs_modis` + `save_merged` | ✓ 47,505×22 |
-| 2 | `enriched/firms_spain_weather_partial.csv` | `scripts/enrich_weather_batch.py` (Jorge runs it) | partial 46,500/47,505 |
-| 3 | `enriched/firms_spain_weather.csv` | `finalize_weather_csv` when download completes | pending |
-| 4 | `enriched/firms_spain_weather_clc.csv` | Celda 3 `load_weather_for_clc` → Celda 4 `enrich_with_clc` + `save_enriched(filename=…)` | ✓ 46,500×47 (backfilled: `_tile_key` fix recovered 102 Canarias rows) |
-| 5 | `enriched/firms_spain_full_enrichment.csv` | Celda 6 `assign_ccaa` → `add_ccaa_budget_sums` → `save_enriched(filename=…)` | ✓ 46,500×50 (2026-10-02; refresh to 47,505 after the download; `firms_spain_final.csv` reserved for the post-exploration/dedup modeling input; sums now `prevention_current` + `prev{N}` — regen pending) |
+| 2 | `enriched/firms_spain_weather_partial.csv` | `scripts/enrich_weather_batch.py` (Jorge runs it) | ✓ 47,505×37 (`temperature_2m` complete; 8,912 rows lack `boundary_layer_height`, null upstream in 2024) |
+| 3 | `enriched/firms_spain_weather.csv` | `finalize_weather_csv` when download completes | NOT published, by team decision (loader falls back to the partial; notebook 01 imputes BLH with the median) |
+| 4 | `enriched/firms_spain_weather_clc.csv` | Celda 3 `load_weather_for_clc` → Celda 4 `enrich_with_clc` + `save_enriched(filename=…)` | ✓ 47,505×47 (backfilled: `_tile_key` fix recovered 102 Canarias rows) |
+| 5 | `enriched/firms_spain_full_enrichment.csv` | Celda 6 `assign_ccaa` → `add_ccaa_budget_sums` → `save_enriched(filename=…)` | ✓ 30,931×51 (decided `clc!=1` + `type==0` filters; `firms_spain_final.csv` reserved for the post-exploration/dedup modeling input; sums are `prevention_current` + `prev{N}`) |
 
 Functions live in `src/wildfire/` (`enrichment/merge_sensors.py`, `enrichment/weather_batch.py`,
 `enrichment/clc_enrichment.py`, `data/ccaa.py`); notebook cells only orchestrate.
@@ -53,8 +53,21 @@ unmapped → budget sums `NaN`; no rows ever dropped.
 
 ### C. Still open (do NOT pick these up unasked)
 
-- Jorge finishes the weather download (open item 1), then re-run Celdas 3→4→6.
-- Celda 5 decision: drop `clc_class == 1`? (team).
+- Weather download: `temperature_2m` complete (47,505/47,505); only 8,912
+  `boundary_layer_height` gaps remain (null upstream in 2024, notebook 01
+  imputes the median). Optional backfill via the batch script (spends real
+  API quota) or publishing `firms_spain_weather.csv` with the gap — both
+  undecided; nothing downstream is blocked.
+- ~~Celda 5 decision: drop `clc_class == 1`? (team)~~ — resolved: decided
+  `clc!=1` + `type==0` filters, documented in notebook 01 Celda 5.
+- Background days for the occurrence model (owner: team). Random CCAA×days
+  in 2023–2024 with zero FIRMS detections, stored with the identical everyday
+  schema (`src/wildfire/processing/occurrence.py`: `background_skeleton` +
+  `assemble_modeling_frame`; settings under `modeling.occurrence` —
+  `background_ratio: 2`). Their weather must come through the batched
+  Open-Meteo machinery (500-row POST batches, spends real API quota), so keep
+  the sample modest (1:1–1:3 vs positives). Unblocks end-to-end
+  fire/no-fire risk ranking (PR-AUC, blocked CV by season/CCAA).
 - ~~Boundaries source decision (open item 2)~~ — resolved 2026-10-02 (team GeoJSON).
 - Git tracking policy for large generated CSVs (open item 3).
 - README drift (open item 4; `build_dataset.py` deleted 2026-10-03 as superseded);

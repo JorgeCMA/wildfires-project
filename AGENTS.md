@@ -6,7 +6,7 @@
 # Install (requires GDAL/system libs for rasterio/geopandas)
 pip install -e ".[dev]"    # dev extras: pytest, mypy, ruff, ipykernel, nbformat, nbclient
 
-# Tests (350 total; 348 run by default, 2 integration deselected via addopts)
+# Tests (401 collected; 399 run by default, 2 integration deselected via addopts)
 pytest tests/                            # default: -m "not integration" (see pyproject)
 pytest -m integration                    # only the 2 real-network tests (spends API quota!)
 pytest tests/test_clc.py                 # single file
@@ -37,10 +37,10 @@ Confidence Mapping → **Weather (batched)** → **CLC** → **geopandas/CCAA bu
 CSV chain under `data/processed/` — every name denotes its contents, each feeds the next:
 
 1. `merged/firms_spain_merged.csv` — FIRMS + confidence (22 cols)
-2. `enriched/firms_spain_weather_partial.csv` — +15 weather, resume point (in-progress)
-3. `enriched/firms_spain_weather.csv` — completed weather (written by `finalize_weather_csv`)
-4. `enriched/firms_spain_weather_clc.csv` — + `clc_class`, neighbors, `clc_uniform_surroundings`
-5. `enriched/firms_spain_full_enrichment.csv` — + `ccaa`, `prevention_current`, `prevention_prev{N}`, `extinction_prev{N}` (full-enrichment output, 51 cols after regen; N = `ccaa.budget_lookback_years`, extinction excludes the current year — no leakage; `firms_spain_final.csv` is reserved for the post-exploration/dedup modeling input)
+2. `enriched/firms_spain_weather_partial.csv` — +15 weather (47,505×37, `temperature_2m` complete; 8,912 rows lack `boundary_layer_height`, null upstream in 2024 responses)
+3. `enriched/firms_spain_weather.csv` — completed weather (NOT published, by team decision: the loader falls back to the partial and notebook 01 imputes BLH with the median)
+4. `enriched/firms_spain_weather_clc.csv` — + `clc_class`, neighbors, `clc_uniform_surroundings` (47,505×47)
+5. `enriched/firms_spain_full_enrichment.csv` — + `ccaa`, `prevention_current`, `prevention_prev{N}`, `extinction_prev{N}` (full-enrichment output, 30,931×51 after the decided `clc!=1` + `type==0` filters; N = `ccaa.budget_lookback_years`, extinction excludes the current year — no leakage; `firms_spain_final.csv` is reserved for the post-exploration/dedup modeling input)
 
 - `src/wildfire/data/` — FIRMS CSV loading (`firms.py`), CLCPlus tile listing (`clc.py`),
   Open-Meteo single-row client (`openmeteo.py`), regional budget CSV (`ccaa.py`)
@@ -108,7 +108,7 @@ and `test_clc.py` with different signatures (plus a differently-named variant in
 
 `notebooks/01_recopilacion_datos_limpieza.ipynb` is the pipeline notebook: one cell per step
 (Celda 1 merge → Celda 2 weather [fully commented, run the script externally] →
-Celda 3 `load_weather_for_clc` → Celda 4 CLC → Celda 5 sealed TODO [drop `clc_class == 1`?]
+Celda 3 `load_weather_for_clc` → Celda 4 CLC → Celda 5 decided filter [`clc_class != 1` + `type == 0`]
 → Celda 6 `assign_ccaa` + `add_ccaa_budget_sums` → `firms_spain_full_enrichment.csv`).
 Comments are bilingual ES/EN; cells only orchestrate — acquisition logic >5 lines lives in `src/`.
 
@@ -152,10 +152,12 @@ Comments are bilingual ES/EN; cells only orchestrate — acquisition logic >5 li
   tests in `test_clc.py`: `TestTileKey`, N09 neighbor crossings, N09 index
   key, mocked N09 enrich).
 
-- **Weather run state**: `firms_spain_weather_partial.csv` resume = 46,500/47,505 (was
-  39,500/47,505, then 32,500/47,505, stopped on the daily limit 2026-10-01; download still Jorge's job).
-  Resume = re-run `python scripts/enrich_weather_batch.py`
-  (exit 0 publishes `firms_spain_weather.csv`). After it completes, re-run notebook
-  Celdas 3→4→6 to refresh `firms_spain_weather_clc.csv` + `firms_spain_full_enrichment.csv`
-  to all 47,505 rows — no code changes (`load_weather_for_clc` picks the completed
-  file automatically).
+- **Weather run state**: `firms_spain_weather_partial.csv` is complete on
+  `temperature_2m` (47,505/47,505; resume == len, nothing left to download).
+  8,912 rows lack `boundary_layer_height` (null upstream in the 2024
+  responses), so `finalize_weather_csv` (default `require_complete=True`)
+  refuses to publish `firms_spain_weather.csv` — absent by team decision, not
+  by delay. The loader falls back to the partial and notebook 01 imputes BLH
+  with the median (Celda 2.4), so nothing downstream is blocked. Publishing
+  with the gap, or backfilling BLH via the batch script (spends real API
+  quota), both remain possible but undecided.
