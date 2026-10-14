@@ -213,10 +213,302 @@ def assert_feature_sets_clean(*sets: list[str]) -> None:
 
 
 def resolve_set(df: pd.DataFrame, columns: list[str], name: str) -> pd.DataFrame:
-    """Select an input set, warning (not raising) on absent columns."""
+    """Select an input set, warning (not raising) on absent columns.
+
+    Duplicate names collapse (first wins): set C lists the CLC fixed
+    columns and the built environment, which share two names.
+    """
+    columns = list(dict.fromkeys(columns))
     absent = [c for c in columns if c not in df.columns]
     if absent:
         warnings.warn(
             f"{name}: absent columns dropped: {absent}.", UserWarning, stacklevel=2
         )
     return df[[c for c in columns if c in df.columns]].copy()
+
+
+# ---------------------------------------------------------------------------
+# Block 03b: clustering helpers (plan §6.1). The notebook measures (all k),
+# 03e decides. Everything here is deterministic given ``seed``.
+# ---------------------------------------------------------------------------
+
+#: Shared seed (the project one).
+CLUSTERING_SEED = 42
+
+#: k sweep for KMeans/GMM (plan §6.1).
+K_RANGE: list[int] = list(range(2, 13))
+
+#: Ward sample size (dendrogram estimate, plan §6.1).
+WARD_SAMPLE_N = 5_000
+
+#: Silhouette is O(n²) memory: score it on a sample, the rest on full data.
+SILHOUETTE_SAMPLE_N = 5_000
+
+#: Ordered time-of-day levels: ordinal encoding is meaningful (night →
+#: morning → heat peak → night), unlike one-hot which would explode k-means
+#: distances on a single categorical.
+FRANJA_ORDER: list[str] = ["Madrugada", "Mañana", "Tarde_Pico_Calor", "Noche"]
+
+#: Nominal inputs excluded from distances; profiles/validation only
+#: (plan §5: `clc_class` enters only methods that accept it — none yet).
+NOMINAL_EXCLUDED: list[str] = ["clc_class"]
+
+
+def encode_franja_horaria(df: pd.DataFrame) -> pd.DataFrame:
+    """Ordinal-encode ``franja_horaria`` following :data:`FRANJA_ORDER`.
+
+    Unknown levels warn and become NaN (fail-closed).
+    """
+    out = df.copy()
+    if TIME_COL not in out.columns:
+        warnings.warn(
+            f"{TIME_COL!r} not in frame; nothing encoded.", UserWarning, stacklevel=2
+        )
+        return out
+    codes = pd.Categorical(out[TIME_COL], categories=FRANJA_ORDER, ordered=True).codes
+    unknown = set(out[TIME_COL].dropna().unique()) - set(FRANJA_ORDER)
+    if unknown:
+        warnings.warn(
+            f"Unknown {TIME_COL} levels -> NaN: {sorted(unknown)}.",
+            UserWarning,
+            stacklevel=2,
+        )
+    out[TIME_COL] = codes.astype(float)
+    out.loc[out[TIME_COL] < 0, TIME_COL] = np.nan
+    return out
+
+
+def distance_columns(columns: list[str]) -> list[str]:
+    """Input columns usable in distance-based methods (drop nominals)."""
+    return [c for c in columns if c not in NOMINAL_EXCLUDED]
+
+
+def sample_frame(df: pd.DataFrame, n: int, seed: int = CLUSTERING_SEED) -> pd.DataFrame:
+    """Deterministic uniform sample (Ward/silhouette scale control)."""
+    return df.sample(n=min(n, len(df)), random_state=seed)
+
+
+def fit_kmeans_range(
+    X: pd.DataFrame,
+    k_range: list[int] | None = None,
+    seed: int = CLUSTERING_SEED,
+) -> tuple[dict[int, np.ndarray], pd.DataFrame]:
+    """KMeans over ``k_range`` + internal metrics per k.
+
+    Inertia/Calinski-Harabasz/Davies-Bouldin on full data; silhouette on a
+    deterministic sample (memory). Returns (labels per k, metrics table).
+    """
+    from sklearn.cluster import KMeans
+    from sklearn.metrics import (
+        calinski_harabasz_score,
+        davies_bouldin_score,
+        silhouette_score,
+    )
+
+    k_range = list(K_RANGE if k_range is None else k_range)
+    values = X.to_numpy(dtype=float)
+    sample_idx = sample_frame(
+        pd.DataFrame(values), SILHOUETTE_SAMPLE_N, seed
+    ).index.to_numpy()
+    labels: dict[int, np.ndarray] = {}
+    rows = []
+    for k in k_range:
+        model = KMeans(n_clusters=k, n_init=10, random_state=seed).fit(values)
+        lab = model.labels_
+        labels[k] = lab
+        rows.append(
+            {
+                "k": k,
+                "inertia": float(model.inertia_),
+                "silhouette": float(silhouette_score(values[sample_idx], lab[sample_idx])),
+                "calinski_harabasz": float(calinski_harabasz_score(values, lab)),
+                "davies_bouldin": float(davies_bouldin_score(values, lab)),
+            }
+        )
+    return labels, pd.DataFrame(rows).set_index("k")
+
+
+def fit_gmm_range(
+    X: pd.DataFrame,
+    k_range: list[int] | None = None,
+    covariance_types: tuple[str, ...] = ("full", "diag"),
+    seed: int = CLUSTERING_SEED,
+) -> dict[tuple[int, str], dict]:
+    """GMM over (k, covariance) with BIC + soft membership (plan §6.1)."""
+    from sklearn.mixture import GaussianMixture
+
+    k_range = list(K_RANGE if k_range is None else k_range)
+    values = X.to_numpy(dtype=float)
+    results: dict[tuple[int, str], dict] = {}
+    for k in k_range:
+        for cov in covariance_types:
+            model = GaussianMixture(
+                n_components=k, covariance_type=cov, random_state=seed
+            ).fit(values)
+            results[(k, cov)] = {
+                "labels": model.predict(values),
+                "proba": model.predict_proba(values),
+                "bic": float(model.bic(values)),
+            }
+    return results
+
+
+def gmm_bic_table(results: dict[tuple[int, str], dict]) -> pd.DataFrame:
+    """Pivot BIC per (k, covariance) for the k-by-BIC decision (03e)."""
+    rows = [{"k": k, "covariance": cov, "bic": r["bic"]} for (k, cov), r in results.items()]
+    return pd.DataFrame(rows).pivot(index="k", columns="covariance", values="bic")
+
+
+def ward_linkage(X: pd.DataFrame) -> np.ndarray:
+    """Ward linkage matrix on a (sampled) frame (plan §6.1, dendrogram)."""
+    from scipy.cluster.hierarchy import linkage
+
+    return linkage(X.to_numpy(dtype=float), method="ward")
+
+
+def cliffs_delta(a: np.ndarray | pd.Series, b: np.ndarray | pd.Series) -> float:
+    """Cliff's |δ|-signed effect size between two independent samples.
+
+    (dominance rate: P(a > b) − P(a < b)). Rank-based via ``searchsorted``:
+    O((n+m) log m), exact ties handled — identical values to the naive
+    O(n·m) formulation, fast enough for 30 k-row group pairs.
+    """
+    x = np.asarray(a, dtype=float).ravel()
+    y = np.asarray(b, dtype=float).ravel()
+    x = x[~np.isnan(x)]
+    y = np.sort(y[~np.isnan(y)])
+    if x.size == 0 or y.size == 0:
+        return float("nan")
+    smaller = (y.size - np.searchsorted(y, x, side="right")).sum()  # #(yj > xi)
+    greater = np.searchsorted(y, x, side="left").sum()  # #(yj < xi)
+    return float((greater - smaller) / (x.size * y.size))
+
+
+def max_pairwise_cliffs_delta(
+    values: np.ndarray | pd.Series, labels: np.ndarray | pd.Series
+) -> tuple[float, tuple]:
+    """Max |Cliff's δ| over group pairs (severity separation, plan §7B)."""
+    vals = np.asarray(values, dtype=float).ravel()
+    labs = np.asarray(labels).ravel()
+    groups = sorted(set(labs.tolist()))
+    best = (0.0, (None, None))
+    for i, g in enumerate(groups):
+        for h in groups[i + 1 :]:
+            delta = cliffs_delta(vals[labs == g], vals[labs == h])
+            if abs(delta) > abs(best[0]):
+                best = (delta, (g, h))
+    return best
+
+
+def negative_control_partitions(perfilado: pd.DataFrame) -> dict[str, np.ndarray]:
+    """Trivial month-only / CCAA-only partitions (plan §6.1, §7B).
+
+    Deterministic baselines the candidate typology must beat: if it cannot
+    separate severity better than the calendar, it rediscovered it.
+    """
+    controls = {}
+    for name, col in (("month", "month"), ("ccaa", "ccaa")):
+        if col not in perfilado.columns:
+            warnings.warn(
+                f"Negative control {name!r} skipped: {col!r} absent.",
+                UserWarning,
+                stacklevel=2,
+            )
+            continue
+        controls[name] = pd.factorize(perfilado[col])[0]
+    return controls
+
+
+# ---------------------------------------------------------------------------
+# Block 03c: anomaly helpers (plan §6.2). Scores are higher-is-rarer in all
+# three detectors so flags and plots share one convention. Deterministic
+# given ``seed``.
+# ---------------------------------------------------------------------------
+
+#: Votes needed for the consensus flag (plan §6.2: agreement of ≥2 of 3).
+CONSENSUS_MIN_VOTES = 2
+
+#: Default anomaly rate (top percentile of the score distribution, plan §6.2).
+ANOMALY_PCT = 2.0
+
+
+def fit_isolation_forest(
+    X: pd.DataFrame, seed: int = CLUSTERING_SEED
+) -> np.ndarray:
+    """Isolation-Forest rarity scores (higher = rarer)."""
+    from sklearn.ensemble import IsolationForest
+
+    model = IsolationForest(random_state=seed).fit(X.to_numpy(dtype=float))
+    return -model.decision_function(X.to_numpy(dtype=float))
+
+
+def fit_lof(X: pd.DataFrame) -> np.ndarray:
+    """Local-Outlier-Factor rarity scores (higher = rarer).
+
+    Local by construction: flags points sparse *relative to their
+    neighbourhood*, e.g. a middling fire where all fires are small.
+    """
+    from sklearn.neighbors import LocalOutlierFactor
+
+    model = LocalOutlierFactor().fit(X.to_numpy(dtype=float))
+    return -model.negative_outlier_factor_
+
+
+def robust_mahalanobis(
+    X: pd.DataFrame, seed: int = CLUSTERING_SEED
+) -> np.ndarray:
+    """Robust Mahalanobis distances via MinCovDet (higher = rarer).
+
+    Global and elliptical: flags points far from the robust centre after
+    accounting for correlations (complements the local view of LOF).
+    """
+    from sklearn.covariance import MinCovDet
+
+    values = X.to_numpy(dtype=float)
+    return MinCovDet(random_state=seed).fit(values).mahalanobis(values)
+
+
+def percentile_flag(scores: np.ndarray | pd.Series, pct: float = ANOMALY_PCT) -> np.ndarray:
+    """Flag the top ``pct`` % of a rarity score (never an eyeballed rate)."""
+    s = np.asarray(scores, dtype=float).ravel()
+    if not 0 < pct < 100:
+        raise ValueError(f"pct must be in (0, 100), got {pct}.")
+    threshold = np.nanquantile(s, 1.0 - pct / 100.0)
+    return s >= threshold
+
+
+def consensus_flag(*flags: np.ndarray, min_votes: int = CONSENSUS_MIN_VOTES) -> np.ndarray:
+    """Keep rows flagged by at least ``min_votes`` detectors."""
+    stacked = np.column_stack([np.asarray(f, dtype=bool).ravel() for f in flags])
+    return stacked.sum(axis=1) >= min_votes
+
+
+def imputed_blh_mask(df: pd.DataFrame, col: str = "boundary_layer_height") -> pd.Series:
+    """Flag rows sitting exactly at the column median (plan §3 artefact hunt).
+
+    The 16 % BLH gap was median-imputed in notebook 01, so rows exactly at
+    the median are likely imputed, not measured. Missing column -> all False
+    with a warning (fail-closed).
+    """
+    if col not in df.columns:
+        warnings.warn(
+            f"{col!r} absent; no BLH-imputed rows flagged.", UserWarning, stacklevel=2
+        )
+        return pd.Series(False, index=df.index)
+    median = float(df[col].median())
+    return df[col] == median
+
+
+def weather_pc_scores(df: pd.DataFrame) -> pd.DataFrame:
+    """Project rows onto the weather-PCA space (PC1..PCk, plan §4.3 visual).
+
+    Thin wrapper over :func:`fit_weather_pca`: same 90.9 % / 7-PC space as
+    02b, refit here descriptively for colouring anomaly maps (never an input
+    to another model without refit-on-train).
+    """
+    from wildfire.processing.pca_weather import fit_weather_pca, pca_input_columns
+
+    missing = set(pca_input_columns()) - set(df.columns)
+    if missing:
+        raise KeyError(f"Missing PCA input columns: {sorted(missing)}.")
+    return fit_weather_pca(df).scores

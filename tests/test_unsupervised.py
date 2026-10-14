@@ -3,25 +3,41 @@
 import numpy as np
 import pandas as pd
 import pytest
+
 from wildfire.config import PROJECT_ROOT
 from wildfire.processing.pca_weather import pca_feature_columns
 from wildfire.processing.unsupervised import (
     CLC_NEIGHBOURS,
+    CLUSTERING_SEED,
     DEFAULT_MIN_CLIFF_DELTA,
     ENTRADA_A,
     ENTRADA_B,
     ENTRADA_C_FIXED,
     ENTRADA_D,
+    FRANJA_ORDER,
     FREQ_VECINA_PREFIX,
+    K_RANGE,
     LOG_COLS,
+    NOMINAL_EXCLUDED,
     PERFILADO,
+    WARD_SAMPLE_N,
     add_wind_circular,
     apply_log_transforms,
     assert_feature_sets_clean,
     build_clc_environment,
     clc_environment_columns,
+    cliffs_delta,
+    distance_columns,
+    encode_franja_horaria,
+    fit_gmm_range,
+    fit_kmeans_range,
+    gmm_bic_table,
     load_min_cliff_delta,
+    max_pairwise_cliffs_delta,
+    negative_control_partitions,
     resolve_set,
+    sample_frame,
+    ward_linkage,
 )
 
 
@@ -132,3 +148,187 @@ def test_listed_columns_exist_in_lags_index():
         missing = [c for c in columns if c not in cols]
         assert not missing, f"{name}: {missing}"
     assert set(CLC_NEIGHBOURS) <= cols
+
+# ---------------------------------------------------------------------------
+# Block 03b helpers.
+# ---------------------------------------------------------------------------
+
+
+def _blobs(n=60, seed=0):
+    rng = np.random.default_rng(seed)
+    a = rng.normal(-3.0, 0.5, size=(n, 2))
+    b = rng.normal(3.0, 0.5, size=(n, 2))
+    return pd.DataFrame(np.vstack([a, b]), columns=["x", "y"])
+
+
+def test_k_range_and_seed():
+    assert K_RANGE == list(range(2, 13))
+    assert CLUSTERING_SEED == 42
+    assert WARD_SAMPLE_N == 5_000
+
+
+def test_franja_encoding_order():
+    df = pd.DataFrame({"franja_horaria": FRANJA_ORDER})
+    out = encode_franja_horaria(df)
+    assert out["franja_horaria"].tolist() == [0.0, 1.0, 2.0, 3.0]
+
+
+def test_franja_unknown_warns_to_nan():
+    with pytest.warns(UserWarning, match="Unknown"):
+        out = encode_franja_horaria(pd.DataFrame({"franja_horaria": ["Madrugada", "Siesta"]}))
+    assert out["franja_horaria"].iloc[0] == 0.0
+    assert np.isnan(out["franja_horaria"].iloc[1])
+
+
+def test_distance_columns_drop_nominal():
+    assert distance_columns([*ENTRADA_C_FIXED, "franja_horaria"]) == [
+        c for c in [*ENTRADA_C_FIXED, "franja_horaria"] if c not in NOMINAL_EXCLUDED
+    ]
+    assert "clc_class" not in distance_columns(ENTRADA_C_FIXED)
+
+
+def test_resolve_set_dedupes():
+    df = pd.DataFrame({"a": [1], "b": [2]})
+    out = resolve_set(df, ["a", "b", "a"], "DUP")
+    assert list(out.columns) == ["a", "b"]
+
+
+def test_kmeans_range_deterministic_shapes():
+    X = _blobs()
+    labels1, m1 = fit_kmeans_range(X, k_range=[2, 3], seed=42)
+    labels2, m2 = fit_kmeans_range(X, k_range=[2, 3], seed=42)
+    assert set(labels1) == {2, 3}
+    assert all(len(v) == len(X) for v in labels1.values())
+    assert (labels1[2] == labels2[2]).all()
+    assert m1.equals(m2)
+    assert list(m1.columns) == ["inertia", "silhouette", "calinski_harabasz", "davies_bouldin"]
+    assert m1.loc[3, "inertia"] < m1.loc[2, "inertia"]  # blobs separate cleanly
+
+
+def test_gmm_range_proba_and_bic():
+    X = _blobs()
+    res = fit_gmm_range(X, k_range=[2], covariance_types=("full", "diag"))
+    for (k, cov), r in res.items():
+        assert r["proba"].shape == (len(X), k)
+        assert r["proba"].sum(axis=1) == pytest.approx(np.ones(len(X)))
+        assert np.isfinite(r["bic"])
+        assert len(r["labels"]) == len(X)
+    table = gmm_bic_table(res)
+    assert table.shape == (1, 2)
+
+
+def test_ward_linkage_shape_and_sample():
+    X = _blobs(n=40)
+    Z = ward_linkage(X)
+    assert Z.shape == (len(X) - 1, 4)
+    s1 = sample_frame(X, 25, seed=42)
+    s2 = sample_frame(X, 25, seed=42)
+    assert s1.equals(s2)
+
+
+def test_cliffs_delta_handcomputed():
+    assert cliffs_delta([3, 4, 5], [1, 2, 1]) == pytest.approx(1.0)
+    assert cliffs_delta([1, 2, 3], [1, 2, 3]) == pytest.approx(0.0)
+    assert cliffs_delta([1, 1], [2, 3]) == pytest.approx(-1.0)
+
+
+def test_max_pairwise_and_controls():
+    values = np.array([10.0, 11.0, 1.0, 2.0, 5.0, 6.0])
+    labels = np.array([0, 0, 1, 1, 2, 2])
+    delta, pair = max_pairwise_cliffs_delta(values, labels)
+    assert abs(delta) == pytest.approx(1.0)
+    assert set(pair) == {0, 1}
+    perf = pd.DataFrame({"month": [1, 1, 2, 2], "ccaa": ["A", "B", "A", "B"]})
+    controls = negative_control_partitions(perf)
+    assert controls["month"].tolist() == [0, 0, 1, 1]
+    assert controls["ccaa"].tolist() == [0, 1, 0, 1]
+
+# ---------------------------------------------------------------------------
+# Block 03c helpers.
+# ---------------------------------------------------------------------------
+
+
+def _with_outliers(n=200, seed=1):
+    rng = np.random.default_rng(seed)
+    base = rng.normal(0.0, 1.0, size=(n, 3))
+    out = np.array([[10.0, 10.0, 10.0], [-9.0, 9.0, -9.0]])
+    return pd.DataFrame(np.vstack([base, out]), columns=["x", "y", "z"])
+
+
+def test_anomaly_constants():
+    from wildfire.processing.unsupervised import ANOMALY_PCT, CONSENSUS_MIN_VOTES
+
+    assert ANOMALY_PCT == 2.0
+    assert CONSENSUS_MIN_VOTES == 2
+
+
+def test_detectors_rank_outliers_last():
+    from wildfire.processing.unsupervised import (
+        fit_isolation_forest,
+        fit_lof,
+        robust_mahalanobis,
+    )
+
+    X = _with_outliers()
+    for scores in (fit_isolation_forest(X), fit_lof(X), robust_mahalanobis(X)):
+        assert len(scores) == len(X)
+        assert np.all(np.isfinite(scores))
+        order = np.argsort(scores)
+        assert set(order[-2:].tolist()) == {len(X) - 2, len(X) - 1}
+
+
+def test_detectors_deterministic():
+    from wildfire.processing.unsupervised import (
+        fit_isolation_forest,
+        robust_mahalanobis,
+    )
+
+    X = _with_outliers()
+    assert (fit_isolation_forest(X) == fit_isolation_forest(X)).all()
+    assert (robust_mahalanobis(X) == robust_mahalanobis(X)).all()
+
+
+def test_percentile_flag_rate_and_bounds():
+    from wildfire.processing.unsupervised import percentile_flag
+
+    s = np.arange(1000, dtype=float)
+    flag = percentile_flag(s, pct=2.0)
+    assert flag.sum() == 20
+    assert flag[-1] and not flag[0]
+    with pytest.raises(ValueError, match="pct"):
+        percentile_flag(s, pct=0.0)
+
+
+def test_consensus_flag_votes():
+    from wildfire.processing.unsupervised import consensus_flag
+
+    a = np.array([True, True, False, False])
+    b = np.array([True, False, True, False])
+    c = np.array([False, False, False, True])
+    assert consensus_flag(a, b, c).tolist() == [True, False, False, False]
+    assert consensus_flag(a, b, c, min_votes=1).tolist() == [True, True, True, True]
+
+
+def test_imputed_blh_mask():
+    from wildfire.processing.unsupervised import imputed_blh_mask
+
+    df = pd.DataFrame({"boundary_layer_height": [100.0, 577.5, 577.5, 900.0]})
+    # Median of [100, 577.5, 577.5, 900] is 577.5 -> rows 1, 2 flagged.
+    assert imputed_blh_mask(df).tolist() == [False, True, True, False]
+    with pytest.warns(UserWarning, match="absent"):
+        out = imputed_blh_mask(pd.DataFrame({"x": [1]}))
+    assert not out.any()
+
+
+def test_weather_pc_scores_shape_and_index():
+    from wildfire.processing.pca_weather import pca_input_columns
+    from wildfire.processing.unsupervised import weather_pc_scores
+
+    path = PROJECT_ROOT / "data/processed/expanded/firms_spain_final_lags_index.csv"
+    if not path.exists():
+        pytest.skip("lags_index.csv not present on this checkout")
+    df = pd.read_csv(path, usecols=pca_input_columns())
+    scores = weather_pc_scores(df)
+    assert list(scores.columns) == [f"PC{i + 1}" for i in range(scores.shape[1])]
+    assert scores.shape[0] == len(df)
+    assert (scores.index == df.index).all()
