@@ -122,6 +122,19 @@ ccaa:
 pca:
   target_variance: 0.90
 
+# Aprendizaje no supervisado (bloque 03, ver planning/plan_unsupervised_implementation.md).
+# Unsupervised learning (block 03, see planning/plan_unsupervised_implementation.md).
+unsupervised:
+  # Separación mínima de severidad entre grupos para aceptar una tipología
+  # (§7B del plan): |δ de Cliff| máxima por pares sobre `frp`, y la candidata
+  # tiene que superar además a los controles triviales (mes, CCAA).
+  # Provisional: anclar contra baselines reales en 03a.
+  # Minimum severity separation between clusters to accept a typology
+  # (plan §7B): max pairwise Cliff's |δ| on `frp`, and the candidate must
+  # also beat the trivial controls (month, CCAA). Provisional: anchor
+  # against real baselines in 03a.
+  min_cliff_delta: 0.2
+
 output:
   merged: data/processed/merged
   enriched: data/processed/enriched
