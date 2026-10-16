@@ -63,6 +63,19 @@ def main() -> None:
         help="Resume CSV (default: firms_spain_weather_partial.csv)",
     )
     parser.add_argument(
+        "--input-csv",
+        type=Path,
+        default=None,
+        help="Base de partida si --csv-path aún no existe "
+        "(default: el merged de incendios). P. ej. el fondo sintético.",
+    )
+    parser.add_argument(
+        "--complete-path",
+        type=Path,
+        default=None,
+        help="Destino de finalize (default: firms_spain_weather.csv)",
+    )
+    parser.add_argument(
         "--save-path",
         type=Path,
         default=None,
@@ -75,6 +88,7 @@ def main() -> None:
         max_batches=args.max_batches,
         interval_seconds=args.interval,
         **({"csv_path": csv_path} if csv_path is not None else {}),
+        **({"input_csv": args.input_csv} if args.input_csv is not None else {}),
         **({"save_path": args.save_path} if args.save_path is not None else {}),
     )
     print(f"Status: {status.value}")
@@ -83,7 +97,11 @@ def main() -> None:
     # celda de clima del notebook 01). Idempotente: si ya existía, no copia.
     if status is WeatherBatchStatus.COMPLETE:
         if csv_path is not None:
-            completed = finalize_weather_csv(csv_path, WEATHER_COMPLETE_CSV)
+            completed = finalize_weather_csv(
+                csv_path,
+                (args.complete_path
+                 if args.complete_path is not None else WEATHER_COMPLETE_CSV),
+            )
         else:
             completed = finalize_weather_csv()
         print(f"Weather CSV: {completed}")

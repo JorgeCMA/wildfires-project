@@ -375,6 +375,41 @@ class TestRunWeatherEnrichment:
         assert find_resume_row(pd.read_csv(csv)) == 2
 
 
+class TestInputCsv:
+    """``input_csv`` como base cuando la reanudación aún no existe."""
+
+    def _make_input(self, tmp_path, latitudes):
+        path = tmp_path / "input.csv"
+        pd.DataFrame(
+            {
+                "latitude": latitudes,
+                "acq_date": ["2023-01-01"] * len(latitudes),
+                "acq_time": [1200] * len(latitudes),
+            }
+        ).to_csv(path, index=False)
+        return path
+
+    def test_input_seeds_missing_resume(self, tmp_path):
+        base = self._make_input(tmp_path, [40.0, 41.0])
+        resume = tmp_path / "resume.csv"
+
+        status, _fetch, _ = _run(tmp_path, resume, [None, None], input_csv=base)
+
+        assert status is WeatherBatchStatus.COMPLETE
+        out = pd.read_csv(resume)
+        assert out["latitude"].tolist() == [40.0, 41.0]
+        assert find_resume_row(out) == 2
+
+    def test_input_never_overwrites_existing_resume(self, tmp_path):
+        resume = _make_csv(tmp_path, rows=1)
+        base = self._make_input(tmp_path, [41.0])
+
+        status, _, _ = _run(tmp_path, resume, [None], input_csv=base)
+
+        assert status is WeatherBatchStatus.COMPLETE
+        assert pd.read_csv(resume)["latitude"].tolist() == [40.0]
+
+
 # ---------------------------------------------------------------------------
 # Celda 3 del notebook: load_weather_for_clc + finalize_weather_csv
 # ---------------------------------------------------------------------------

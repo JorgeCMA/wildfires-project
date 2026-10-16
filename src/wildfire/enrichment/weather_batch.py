@@ -887,6 +887,7 @@ def run_weather_enrichment(
     interval_seconds: float | None = None,
     csv_path: Path = PARTIAL_CSV,
     save_path: Path = OUTPUT_JSON,
+    input_csv: Path | None = None,
     fetch: Callable[..., None] = fetch_next_batch,
     sleep: Callable[[float], None] = time.sleep,
     max_consecutive_waits: int | None = None,
@@ -921,6 +922,11 @@ def run_weather_enrichment(
         ``openmeteo.batch_interval_seconds`` de config (0 = solo reactiva).
     csv_path:
         CSV de reanudación (entrada y salida).
+    input_csv:
+        Base alternativa cuando ``csv_path`` aún no existe: se copia como
+        punto de partida (p. ej. el fondo sintético). Sin él, la base es
+        ``load_merged()`` (incendios). Nunca sobrescribe un ``csv_path``
+        existente.
     save_path:
         Dónde volcar la respuesta JSON del último lote (``None`` = no).
     fetch:
@@ -942,6 +948,11 @@ def run_weather_enrichment(
         interval_seconds = config["batch_interval_seconds"]
     if max_consecutive_waits is None:
         max_consecutive_waits = config["max_consecutive_waits"]
+
+    if csv_path is not None and not csv_path.exists() and input_csv is not None:
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        pd.read_csv(input_csv).to_csv(csv_path, index=False)
+        _log(f"Base inicial copiada de {input_csv} -> {csv_path}")
 
     batches = 0
     waits = 0
