@@ -5,7 +5,7 @@
 parts of `plan_no_superv_deepseek.md`. Decisions closed during review are marked **[DECIDED]**; open ones,
 **[OPEN]**.
 
-**Working base**: `data/processed/expanded/firms_spain_final_lags_index.csv` (30,412 rows × 60 columns).
+**Working base**: `data/processed/expanded/firms_spain_final_lags_index.csv` (23,142 rows × 61 columns, tras el filtro 01b-2.11 de quemas).
 Not `firms_spain_final_normalized.csv`: its scaler saw the whole dataset and is descriptive only.
 
 ---
@@ -13,14 +13,14 @@ Not `firms_spain_final_normalized.csv`: its scaler saw the whole dataset and is 
 ## 1. What this is (for everyone)
 
 When the satellite detects a fire, that day has conditions: heat, wind, dryness, vegetation type, time of
-year. This block groups the 30,412 detections by **similarity of conditions** to answer three questions:
+year. This block groups the 23,142 detections by **similarity of conditions** to answer three questions:
 
 1. Are there distinguishable *types* of fire days? (e.g. "heatwave with wind" vs "damp winter burn"). That is
    the **conditions typology** (clustering). Note: these groups describe what days *with* fire look like;
    whether that description helps prediction is decided by §7B, not by the clustering.
 2. Which detections are *rare* relative to the rest? (candidates for extreme events or sensor artefacts).
    That is **anomaly detection**.
-3. How many **real fires** stand behind 30,412 detections? (one fire is detected over several days). Those
+3. How many **real fires** stand behind 23,142 detections? (one fire is detected over several days). Those
    are the **spatio-temporal events**.
 
 ## 2. What this block will NOT deliver (honest limits)
@@ -40,7 +40,7 @@ year. This block groups the 30,412 detections by **similarity of conditions** to
 
 | Fact | Value | Consequence |
 |---|---|---|
-| Size 30,412 × 60 | fits in memory; distance matrices fit without sampling | GMM/HDBSCAN usable with no shortcuts |
+| Size 23,142 × 61 | fits in memory; distance matrices fit without sampling | GMM/HDBSCAN usable with no shortcuts |
 | Weather PCA | 14 vars → 7 PCs at 90.9 %; PC1 = dryness/heat | set A = 7 PCs (decorrelates the 5 collinear PC1 vars) |
 | `corr(PC1, indice_meteorologico)` = 0.916 | near-redundant | use one or the other, never both |
 | Kruskal CLC vs FRP | H = 1503.7; p ≈ 0 | land cover carries signal: justifies set C |
@@ -147,7 +147,7 @@ score distribution, never eyeballed `contamination`. Cross-check: do they match 
 ### 6.3 Spatio-temporal events
 
 **DBSCAN/HDBSCAN** on (x_km, y_km, day), with 1 day ≈ 5–10 km. Output: event count, size, duration, max FRP +
-an **event-level table** (averaged meteorology). Estimates how many real fires stand behind 30 k detections
+an **event-level table** (averaged meteorology). Estimates how many real fires stand behind 23 k detections
 and asks whether one event spans several regimes (§6.1).
 
 ### 6.4 Virulence-inside variant (dropped)

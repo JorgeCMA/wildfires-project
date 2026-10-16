@@ -16,6 +16,7 @@ from wildfire.processing.unsupervised import (
     ENTRADA_D,
     FRANJA_ORDER,
     FREQ_VECINA_PREFIX,
+    ID_COL,
     K_RANGE,
     LOG_COLS,
     NOMINAL_EXCLUDED,
@@ -24,7 +25,9 @@ from wildfire.processing.unsupervised import (
     add_wind_circular,
     apply_log_transforms,
     assert_feature_sets_clean,
+    attach_id,
     build_clc_environment,
+    check_ids,
     clc_environment_columns,
     cliffs_delta,
     distance_columns,
@@ -127,7 +130,8 @@ def test_wind_circular_unit_circle():
 
 def test_min_cliff_delta_default():
     assert DEFAULT_MIN_CLIFF_DELTA == 0.2
-    assert load_min_cliff_delta() == pytest.approx(0.2)
+    # Anclado en 03e contra baselines reales (CCAA = 0,699 -> listón 0,70).
+    assert load_min_cliff_delta() == pytest.approx(0.70)
 
 
 def test_resolve_set_warns_and_drops():
@@ -332,3 +336,30 @@ def test_weather_pc_scores_shape_and_index():
     assert list(scores.columns) == [f"PC{i + 1}" for i in range(scores.shape[1])]
     assert scores.shape[0] == len(df)
     assert (scores.index == df.index).all()
+
+
+def test_attach_id_first_column_sequence():
+    df = pd.DataFrame({"x": [10, 20, 30]})
+    out = attach_id(df)
+    assert next(iter(out.columns)) == ID_COL
+    assert out[ID_COL].tolist() == [0, 1, 2]
+    with pytest.raises(ValueError, match="already present"):
+        attach_id(out)
+
+
+def test_check_ids_equal_and_mismatch():
+    a = attach_id(pd.DataFrame({"x": [1, 2]}))
+    b = attach_id(pd.DataFrame({"y": [3, 4]}))
+    assert check_ids(a, b).tolist() == [0, 1]
+    shuffled = b.iloc[::-1].reset_index(drop=True)
+    with pytest.raises(ValueError, match="mismatch"):
+        check_ids(a, shuffled)
+    with pytest.raises(KeyError, match=ID_COL):
+        check_ids(a, pd.DataFrame({"y": [3, 4]}))
+    with pytest.raises(ValueError, match="at least one"):
+        check_ids()
+
+
+def test_distance_columns_drops_key():
+    assert ID_COL not in distance_columns(["PC1", "clc_class", ID_COL])
+    assert distance_columns(["PC1", "PC2"]) == ["PC1", "PC2"]

@@ -129,8 +129,8 @@ Working plan §8.6, made concrete:
 - [x] `features_{a,b,c}.csv` + `perfilado.csv` (03a; PC-based after fixes)
 - [x] `cluster_labels.csv` — id, k, **P(GMM)**, score (03b; after fixes)
 - [x] `anomalias_{a,b}.csv` with unique columns (03c; after fixes)
-- [ ] `eventos.csv` + `eventos_resumen.csv` (03d)
-- [ ] `validacion_resumen.csv` + final typology verdict (03e)
+- [x] `eventos.csv` + `eventos_resumen.csv` (03d; 1.177 eventos, 21,4 % ruido)
+- [x] `validacion_resumen.csv` + veredicto: A/k12 aceptada, k5/k7 rechazadas (03e)
 - [ ] Figures: BIC/silhouette (done), map per group (done), anomalies (done),
       k-distance + event map (03d), stability/utility summary (03e)
 - [ ] Methods note including working-plan §2 honest limits, updated with the

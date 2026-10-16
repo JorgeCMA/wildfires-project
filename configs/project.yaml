@@ -128,12 +128,11 @@ unsupervised:
   # Separación mínima de severidad entre grupos para aceptar una tipología
   # (§7B del plan): |δ de Cliff| máxima por pares sobre `frp`, y la candidata
   # tiene que superar además a los controles triviales (mes, CCAA).
-  # Provisional: anclar contra baselines reales en 03a.
-  # Minimum severity separation between clusters to accept a typology
-  # (plan §7B): max pairwise Cliff's |δ| on `frp`, and the candidate must
-  # also beat the trivial controls (month, CCAA). Provisional: anchor
-  # against real baselines in 03a.
-  min_cliff_delta: 0.2
+  # Anclado en 03e (2026-10-16, base 23.142): mejor control CCAA = 0,699,
+  # listón = primer paso de 0,05 estrictamente por encima = 0,70.
+  # Anchored in 03e (2026-10-16, 23,142 base): best control CCAA = 0.699,
+  # bar = first 0.05 step strictly above = 0.70.
+  min_cliff_delta: 0.70
 
 output:
   merged: data/processed/merged

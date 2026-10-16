@@ -253,6 +253,39 @@ FRANJA_ORDER: list[str] = ["Madrugada", "Mañana", "Tarde_Pico_Calor", "Noche"]
 #: (plan §5: `clc_class` enters only methods that accept it — none yet).
 NOMINAL_EXCLUDED: list[str] = ["clc_class"]
 
+#: Stable row key for the whole 03 block: born in 02a as the row order of
+#: `wildfire_data_cleaned.csv`, first column of `lags_index.csv` and of every
+#: 03a output. Never a model/clustering input: excluded from distances.
+ID_COL = "detection_id"
+
+
+def attach_id(frame: pd.DataFrame) -> pd.DataFrame:
+    """Insert :data:`ID_COL` (0..n-1) as the first column (fail-closed)."""
+    if ID_COL in frame.columns:
+        raise ValueError(f"{ID_COL!r} already present: refusing to overwrite the key")
+    out = frame.copy()
+    out.insert(0, ID_COL, range(len(out)))
+    return out
+
+
+def check_ids(*frames: pd.DataFrame) -> np.ndarray:
+    """Assert all frames share the identical :data:`ID_COL` key, return it.
+
+    Replaces positional trust with a key check: same lengths are not enough,
+    a re-sort must fail here instead of silently corrupting a join.
+    """
+    if not frames:
+        raise ValueError("Need at least one frame")
+    ids = []
+    for i, frame in enumerate(frames):
+        if ID_COL not in frame.columns:
+            raise KeyError(f"Frame {i} carries no {ID_COL!r}")
+        ids.append(np.asarray(frame[ID_COL]))
+    first = ids[0]
+    if any(not np.array_equal(other, first) for other in ids[1:]):
+        raise ValueError("detection_id mismatch: frames are not in the same order")
+    return first
+
 
 def encode_franja_horaria(df: pd.DataFrame) -> pd.DataFrame:
     """Ordinal-encode ``franja_horaria`` following :data:`FRANJA_ORDER`.
@@ -279,8 +312,9 @@ def encode_franja_horaria(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def distance_columns(columns: list[str]) -> list[str]:
-    """Input columns usable in distance-based methods (drop nominals)."""
-    return [c for c in columns if c not in NOMINAL_EXCLUDED]
+    """Input columns usable in distance-based methods (drop nominals + key)."""
+    excluded = set(NOMINAL_EXCLUDED) | {ID_COL}
+    return [c for c in columns if c not in excluded]
 
 
 def sample_frame(df: pd.DataFrame, n: int, seed: int = CLUSTERING_SEED) -> pd.DataFrame:
@@ -502,7 +536,7 @@ def imputed_blh_mask(df: pd.DataFrame, col: str = "boundary_layer_height") -> pd
 def weather_pc_scores(df: pd.DataFrame) -> pd.DataFrame:
     """Project rows onto the weather-PCA space (PC1..PCk, plan §4.3 visual).
 
-    Thin wrapper over :func:`fit_weather_pca`: same 90.9 % / 7-PC space as
+    Thin wrapper over :func:`fit_weather_pca`: same 91.5 % / 7-PC space as
     02b, refit here descriptively for colouring anomaly maps (never an input
     to another model without refit-on-train).
     """
