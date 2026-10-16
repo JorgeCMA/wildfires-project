@@ -1,6 +1,6 @@
 contraste,lectura
-Solape con top-15% FRP,26.3 % de anómalas son muy virulentas
-Anómalas no virulentas,289 anómalas fuera del top-FRP (condiciones raras sin fuego fiero)
-BLH imputada entre anómalas,12.0 % (artefacto candidato si alto)
-CCAA top anómala,"{'Canarias': 149, 'Asturias': 124, 'Andalucía': 29}"
-Mes top anómalo,"{8: 159, 3: 107, 5: 32}"
+Solape con top-15% FRP,22.9 % de anómalas son muy virulentas
+Anómalas no virulentas,192 anómalas fuera del top-FRP (condiciones raras sin fuego fiero)
+BLH imputada entre anómalas,4.8 % (artefacto candidato si alto)
+CCAA top anómala,"{'Canarias': 128, 'Asturias': 59, 'Andalucía': 12}"
+Mes top anómalo,"{8: 134, 3: 58, 9: 15}"

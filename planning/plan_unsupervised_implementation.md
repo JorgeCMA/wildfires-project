@@ -150,10 +150,12 @@ score distribution, never eyeballed `contamination`. Cross-check: do they match 
 an **event-level table** (averaged meteorology). Estimates how many real fires stand behind 30 k detections
 and asks whether one event spans several regimes (§6.1).
 
-### 6.4 Virulence-inside variant (optional)
+### 6.4 Virulence-inside variant (dropped)
 
-Repeat §6.1 with `log1p(frp)` as an input. Question: do high/low-power regimes appear within the same
-conditions? Compare partitions with ARI.
+**[DROPPED 2026-10-16]**: repeating §6.1 with `log1p(frp)` as an input would
+violate hard rule 4.1 (no satellite data in inputs). The severity-separation
+checks (§7B: Kruskal on `frp` across groups + Cliff's δ) answer whether
+high/low-power regimes separate without breaking the rule.
 
 ## 7. Validation (two blocks: stability ≠ utility)
 

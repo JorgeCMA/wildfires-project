@@ -5,6 +5,12 @@
 restated here; this file only sequences what is left). Decisions closed here are
 marked **[DECIDED]**; open ones, **[OPEN]**.
 
+**Base (2026-10-16)**: 23,142 detections, not 30,412 — the 01b-2.11 quemas filter
+(inside-window Oct15–May30 + CLC 6/7 → 7,270 apartadas) is now decided alongside
+`clc!=1` + `type==0`. Reference numbers on the new base: BLH imputation spike
+3,065 rows at 577.5; FRP top-15% at 25.6. `sup_forestal_ha` is kept in the frame
+(58-col `cleaned`, 61-col `lags_index`); it enters no input set.
+
 **Preconditions (in flight / verify before starting)** — fixes to 03a/03b/03c
 decided during the 2026-10-14 review:
 
@@ -23,7 +29,7 @@ decided during the 2026-10-14 review:
 
 ## 1. 03d_eventos — spatio-temporal events (working plan §6.3)
 
-**Question**: how many real fires stand behind 30,412 detections, and does one
+**Question**: how many real fires stand behind 23,142 detections, and does one
 event span several conditions-regimes?
 
 **Input**: `data/processed/expanded/firms_spain_final_lags_index.csv` (raw
@@ -31,8 +37,9 @@ units; no scaler reuse — hard rule 4.3). **No `features_d.csv`**: the set-D
 matrix is tiny and specific to this analysis, so 03d builds it inline
 **[DECIDED]**:
 
-- `latitude`, `longitude` → EPSG:25830 (UTM 30N, metres) → km, via geopandas
-  (already a project dependency; `src/wildfire/geo/regions.py` precedent).
+- `latitude`, `longitude` → EPSG:3035 (LAEA Europe, metres) → km, via pyproj
+  (`Transformer`, the `clc_enrichment.py` precedent — UTM 30N does not cover
+  Canarias, so 25830 would distort DBSCAN distances there) **[DECIDED]**.
 - `acq_date` → continuous day index (`day - day.min()`, integer days).
 - Anisotropic scaling: **1 day ≈ 5–10 km**. Default 7.5 km/day **[DECIDED]**, with
   a sensitivity cell at {5, 7.5, 10} because the event count depends on it.
@@ -140,3 +147,6 @@ Working plan §8.6, made concrete:
   fraction is implausibly high (> 30 %) or events look over-merged.
 - **[OPEN]** `riesgo_antropico_alto` as a set-C variant — only if the typology
   passes 7A (working plan §5 note).
+- **[DROPPED]** working-plan §6.4 virulence-inside variant (`log1p(frp)` as an
+  input) — violates hard rule 4.1 (no satellite in inputs); the severity
+  analysis in 03b/§7B answers the underlying question indirectly.
