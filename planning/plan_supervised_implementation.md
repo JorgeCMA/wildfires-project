@@ -131,7 +131,39 @@ For the best base model, under **both** blocked-split protocols, with vs without
 - Ablation harness: ΔPR-AUC sign flips as expected on a synthetic separable column.
 - Keep `pytest tests/test_occurrence.py` green (23 tests currently).
 
+## 7b. Deployment unit & calibration — "chances", not just ranking [OPEN]
+
+The model as specified outputs a **ranking score**: `f(weather, location, day) → risk`,
+comparable across rows ("this day/place is riskier than that one") — usable for
+alerts, prioritization and maps. It is **not** a calibrated probability, and cannot
+become one by post-processing, because:
+
+1. **Prevalence is artificial.** The 1:2 fire/background ratio is a sampling choice
+   (`background_ratio: 2`), not the true base rate. Probabilities from a 33%-positive
+   training set would massively overstate real risk; no calibrator fixes a base rate
+   that was chosen, not observed.
+2. The contract says so explicitly: *"el objetivo es un ranking de riesgo (PR-AUC),
+   no una probabilidad calibrada: la prevalencia la fija el muestreo de negativos,
+   no la naturaleza."*
+
+**Routes to true "chances" [OPEN]** — decide the deployment unit early, because it
+shapes background sampling (§1) and the methods note:
+
+| Route | What it yields | Cost / caveat |
+|---|---|---|
+| Ranking only (default) | Comparable risk score, no probability claim | None — the plan as written |
+| CCAA-day probability | P(≥1 fire in CCAA c on day d) — directly estimable from FIRMS counts against the full CCAA×day grid | Honest and actionable for planning; needs the empirical fire-day rate per CCAA, no extra quota |
+| Point-level calibration | "P(fire at this point)" via Platt/isotonic + prior correction against an estimated true prevalence | Fragile: true point prevalence is near-zero and hard to estimate; odds are misleading at that granularity |
+| Hazard/rate reframing | Expected fires per area per day (Poisson-style intensity) | Cleanest probabilistic semantics; a bigger modeling change than 04's scope |
+
+**Recommendation [DECIDED for 04]**: build the ranking model as planned, but (a) keep
+the scoring pipeline separable so a calibration stage can be added later, (b) report
+empirical CCAA-day fire rates alongside model scores in the deliverables cell (cheap,
+no extra quota), and (c) write the probability question into the methods note as an
+explicit open follow-up rather than letting scores be misread as probabilities.
+
 ## 8. Open decisions checklist
+
 
 - [ ] **Team go/no-go on Open-Meteo quota** for ~46k background rows (§1) — blocks
       everything; fallback (a) reduces to ~23k rows.
@@ -141,6 +173,8 @@ For the best base model, under **both** blocked-split protocols, with vs without
 - [ ] Whether `cluster_meteo` enters as categorical (12 levels) or posteriors
       (12 extra numerics) **[OPEN]** — default: categorical + one-hot inside fold.
 - [ ] New dependencies (default: none).
+- [ ] Deployment unit & calibration route (§7b) — ranking-only default; CCAA-day
+      probability as the actionable upgrade; point-level "chances" not recommended.
 
 ## 9. Risks / gotchas
 
