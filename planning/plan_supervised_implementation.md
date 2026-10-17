@@ -1,17 +1,18 @@
 # Supervised section plan — 04 occurrence model
 
-**Status**: working plan for `notebooks/04_aprendizaje_supervisado.ipynb` (currently a
-two-cell skeleton that predates the occurrence contract — its outline is stale and
-will be replaced). Satisfies `plan_unsupervised_implementation.md` §7B/§8.6 (ablation
-contract) and §3 of `plan_unsupervised_next_implementations.md` (reintegration).
-Decisions closed here are marked **[DECIDED]**; open ones, **[OPEN]**.
+**Status**: working plan for `notebooks/04_aprendizaje_supervisado.ipynb` (was a
+two-cell skeleton predating the occurrence contract; its outline is stale and will
+be replaced). Satisfies `plan_unsupervised_implementation.md` §7B/§8.6 (ablation
+contract) and §3 of `plan_unsupervised_next_implementations.md` (reintegration —
+those plan files were archived 2026-10-17; this file is the live plan). Decisions
+closed here are marked **[DECIDED]**; open ones, **[OPEN]**.
 
 **Objective**: a *risk ranking* of fire occurrence — "when/where is a fire likely" —
 from everyday (non-satellite) conditions. Positives = FIRMS detections
 (`data/processed/expanded/firms_spain_final_lags_index.csv`, 23,142 rows, raw units,
-key `detection_id`). Negatives = random background CCAA×day rows (**do not exist
-yet** — the critical-path blocker, §1). Primary metric **PR-AUC** (`rank_metrics`),
-secondary ROC-AUC. No calibrated probabilities.
+key `detection_id`). Negatives = random background CCAA×day rows (in development per
+`planning/background_data_integration.md`). Primary metric **PR-AUC**
+(`rank_metrics`), secondary ROC-AUC. No calibrated probabilities (see §7b).
 
 ## 0. Hard rules (from the plans, non-negotiable)
 
@@ -21,7 +22,7 @@ secondary ROC-AUC. No calibrated probabilities.
    `firms_spain_final_normalized.csv` is descriptive-only and never an input.
 3. **Seed 42 everywhere** (`CLUSTERING_SEED`, `occurrence_settings.random_state`).
 4. **sklearn + scipy only** — xgboost/lightgbm/catboost/imblearn/shap/optuna are not
-   installed; any new dep is **[OPEN]** per working-plan §6 and needs approval.
+   installed; any new dep is **[OPEN]** and needs approval.
 5. Contract discipline: features come from `occurrence_features`
    (`EVERYDAY_FEATURES` allowlist, fixed order); satellite columns in →
    `assemble_modeling_frame` raises; package versions recorded with every output.
@@ -29,30 +30,21 @@ secondary ROC-AUC. No calibrated probabilities.
    they enter the ablation, and are promoted only if ΔPR-AUC > 0 under blocked
    splits. Until then "exist but unproven" in the methods note.
 
-## 1. Background days — the critical path [OPEN: quota]
+## 1. Background days — integration
 
 Contract: `background_skeleton(ccaa, start, end, n_per_day, seed)` → CCAA×date grid,
 weather/CLC filled afterwards, `assemble_modeling_frame(positives, background)`.
-`background_ratio: 2` → **~46k background rows** for 23,142 positives.
+`background_ratio: 2` → **~46k background rows** for 23,142 positives (or ~23k if
+each row is reused for 2 positives — **[OPEN]**, see the integration note).
 
-- **Locations**: `background_skeleton` emits only `(ccaa, acq_date)`. Sample `n_per_day`
-  point locations **inside each CCAA polygon** (geopandas `sample_points`, seed 42),
-  store lat/lon, then run the **batched weather machinery**
-  (`enrichment/weather_batch.py`, 500-row POST batches). ~46k rows ≈ 92 batches ≈
-  12 h wall-clock at the 450 s/batch pacing — **spends real Open-Meteo quota**:
-  team go/no-go required **[OPEN]**.
-- **Quota mitigation options [OPEN]**: (a) `n_per_day=1` with ratio 2 achieved by
-  *reusing* each background row for up to 2 positives (assemble allows 1:2); (b)
-  background only where/when it discriminates (fire-season months × inland CCAA);
-  (c) reduce ratio via config (`background_ratio` is a config knob). Default plan:
-  full 46k, option (a) as fallback.
-- **Fill order** mirrors the pipeline: weather (batched) → CLC
-  (`enrichment/clc_enrichment.py`) → `assign_ccaa` sanity check (should reproduce
-  the skeleton's ccaa) → `add_ccaa_budget_sums`. Save
-  `data/processed/expanded/background_days.csv` (key `background_id`), never mixing
-  with raw detections.
-- **Validation**: `validate_enriched` weather warnings; CCAA reproduction rate;
-  BLH nulls imputed exactly as notebook 01 (median) — documented, since the same
+- The finished background file must satisfy: same 45-col everyday schema in fixed
+  order, own `background_id` key (joins by key, never row order), leakage screen
+  documented (drop rows within the exclusion distance of a same-day detection;
+  default ~1 km **[OPEN]**), `season` derivable from `acq_date`.
+- Fill order mirrors the pipeline: weather (batched) → CLC → `assign_ccaa` sanity
+  check → `add_ccaa_budget_sums`. Save `data/processed/expanded/background_days.csv`.
+- **Validation**: `validate_enriched` weather warnings; CCAA reproduction rate; BLH
+  nulls imputed exactly as notebook 01 (median) — documented, since the same
   imputation must be reproducible for scoring.
 
 ## 2. Feature frame
@@ -92,11 +84,10 @@ first — all three are preconditions for the ablation:
 
 - **Candidates [DECIDED provisional]**: `LogisticRegression` (interpretable floor),
   `RandomForestClassifier`, `HistGradientBoostingClassifier` — sklearn only, seed 42.
-  No tuning budget initially: sensible defaults, document; optuna **[OPEN]**.
+  No tuning budget initially: sensible defaults, documented; optuna **[OPEN]**.
 - **Protocol**: for each of `season` and `ccaa` blocked splits → fit on train folds
   (scaler fit inside fold), score test, collect `rank_metrics`. Report per-fold
-  PR-AUC (mean/min), confusion-free ranking curve data, and per-CCAA/per-season
-  performance tables.
+  PR-AUC (mean/min), ranking curve data, and per-CCAA/per-season performance tables.
 - **Figures**: PR curves per split group, per-CCAA PR-AUC choropleth, feature
   importance (permutation, on one season split) for the floor model.
 - **Outputs**: `data/processed/predictions/occurrence_scores.csv`
@@ -164,9 +155,8 @@ explicit open follow-up rather than letting scores be misread as probabilities.
 
 ## 8. Open decisions checklist
 
-
-- [ ] **Team go/no-go on Open-Meteo quota** for ~46k background rows (§1) — blocks
-      everything; fallback (a) reduces to ~23k rows.
+- [ ] Team go/no-go on Open-Meteo quota for ~46k background rows (§1) — if background
+      is being built in-house this is moot; otherwise fallback = ~23k rows.
 - [ ] Background `n_per_day` / spatial sampling inside polygons (seeded).
 - [ ] `score_anomalia` exact formula (default in §3.3).
 - [ ] Candidate model set + any tuning budget.
@@ -175,17 +165,17 @@ explicit open follow-up rather than letting scores be misread as probabilities.
 - [ ] New dependencies (default: none).
 - [ ] Deployment unit & calibration route (§7b) — ranking-only default; CCAA-day
       probability as the actionable upgrade; point-level "chances" not recommended.
+- [ ] Leakage-exclusion distance (default ~1 km) and whether collisions are dropped
+      or re-sampled.
 
 ## 9. Risks / gotchas
 
 - **Quota/time**: background weather is the long pole; resume CSV exists
   (`weather_batch.py`), plan an interruptible run + `logs/`.
-- **Positional joins**: 03a–03e CSVs share no key except the newly-noted
-  `detection_id` in the lags CSV — 04 must join **on `detection_id`**, never by row
-  order (the audit fragility ends here for the supervised side).
+- **Positional joins end here**: 04 joins on `detection_id` / `background_id`, never
+  by row order (the audit-flagged fragility).
 - **Background leakage traps**: background days must exclude real detections' exact
-  (lat, lon, day) cells; enforce a minimum distance / day-exclusion rule and count
-  collisions **[OPEN]**, default: drop background rows within ~1 km of a detection on
-  the same day.
+  (lat, lon, day) cells; enforce the minimum-distance / day-exclusion rule and count
+  collisions.
 - **CCAA imbalance**: some CCAAs have few positives; ccaa-blocked folds will be
   noisy — report per-fold, don't aggregate away.
