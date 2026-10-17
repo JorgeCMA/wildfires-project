@@ -139,6 +139,12 @@ output:
   enriched: data/processed/enriched
   predictions: data/processed/predictions
   processed: data/processed
+  # Días de fondo (negativos) del modelo supervisado de ocurrencia.
+  # Background days (negatives) for the supervised occurrence model: el
+  # parcial lo va rellenando el equipo por lotes; el terminado se publica al
+  # completarse. El cargador prefiere el terminado y cae en el parcial.
+  background_weather_partial: data/processed/synthetic/firms_spain_background_weather_partial.csv
+  background_weather: data/processed/synthetic/firms_spain_background_weather.csv
 
 paths:
   notebooks: notebooks

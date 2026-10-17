@@ -61,6 +61,16 @@ WEATHER_COMPLETE_CSV = (
     PROJECT_ROOT / load_config()["output"]["enriched"] / "firms_spain_weather.csv"
 )
 
+# Días de fondo (negativos) del modelo de ocurrencia supervisado (Plan A):
+# el parcial lo va rellenando el equipo por lotes (resume CSV); el terminado
+# se publica al completarse. El cargador `load_background_weather` prefiere
+# el terminado y cae en el parcial quedándose solo con las filas que ya
+# tienen `temperature_2m` (ver contrato en planning/plan_supervised_implementation.md).
+BACKGROUND_PARTIAL_CSV = (
+    PROJECT_ROOT / load_config()["output"]["background_weather_partial"]
+)
+BACKGROUND_COMPLETE_CSV = PROJECT_ROOT / load_config()["output"]["background_weather"]
+
 
 def weather_fields() -> list[str]:
     """Las 15 variables horarias pedidas a Open-Meteo (orden de ``hourly``)."""
@@ -159,6 +169,63 @@ def load_weather_for_clc(
         )
     # Índice posicional limpio: dropna conserva el índice original y
     # cualquier asignación posicional (iloc) aguas abajo se desalinearía.
+    return filled.reset_index(drop=True)
+
+
+def load_background_weather(
+    complete_path: Path = BACKGROUND_COMPLETE_CSV,
+    partial_path: Path = BACKGROUND_PARTIAL_CSV,
+) -> pd.DataFrame:
+    """Días de fondo con clima para el modelo supervisado de ocurrencia.
+
+    Contrato (Plan A de planning/plan_supervised_implementation.md):
+
+    1. Si existe el CSV de fondo **terminado** → se devuelve tal cual.
+    2. Si no → se lee el **parcial** y solo se quedan las filas con valor de
+       ``temperature_2m`` (las que el equipo ya ha rellenado por lotes). Así
+       el entrenamiento supervisado puede avanzar con los datos disponibles
+       mientras el relleno sigue por separado, y al publicarse el terminado
+       el mismo código lo usa entero sin tocar nada más.
+
+    Parameters
+    ----------
+    complete_path:
+        CSV terminado. Por defecto ``BACKGROUND_COMPLETE_CSV``.
+    partial_path:
+        CSV de reanudación. Por defecto ``BACKGROUND_PARTIAL_CSV``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Filas de fondo con clima, listas para acompañar a los positivos
+        (FIRMS) en `assemble_modeling_frame`.
+
+    Raises
+    ------
+    RuntimeError
+        Si no existe ninguno de los dos CSV, o el parcial no tiene la
+        columna ``temperature_2m``, o ninguna fila la tiene rellena.
+    """
+    if complete_path.exists():
+        return pd.read_csv(complete_path)
+
+    if not partial_path.exists():
+        raise RuntimeError(
+            f"Background weather not found: neither {complete_path} nor the "
+            f"partial {partial_path} exist"
+        )
+    df = pd.read_csv(partial_path)
+    if "temperature_2m" not in df.columns:
+        raise RuntimeError(
+            f"The partial background CSV {partial_path} has no "
+            "temperature_2m column: nothing filled yet"
+        )
+    filled = df.dropna(subset=["temperature_2m"])
+    if filled.empty:
+        raise RuntimeError(
+            f"No row has a temperature_2m value in {partial_path}: "
+            "the background fill has not produced data yet"
+        )
     return filled.reset_index(drop=True)
 
 

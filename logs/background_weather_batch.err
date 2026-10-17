@@ -1,0 +1,46 @@
+Traceback (most recent call last):
+  File "C:\Projects\wildfires-project\scripts\enrich_weather_batch.py", line 113, in <module>
+    main()
+    ~~~~^^
+  File "C:\Projects\wildfires-project\scripts\enrich_weather_batch.py", line 87, in main
+    status = run_weather_enrichment(
+        max_batches=args.max_batches,
+    ...<3 lines>...
+        **({"save_path": args.save_path} if args.save_path is not None else {}),
+    )
+  File "C:\Projects\wildfires-project\src\wildfire\enrichment\weather_batch.py", line 978, in run_weather_enrichment
+    fetch(save_path=save_path, csv_path=csv_path)
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Projects\wildfires-project\src\wildfire\enrichment\weather_batch.py", line 620, in fetch_next_batch
+    df.to_csv(csv_path, index=False)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Projects\wildfires-project\.venv\Lib\site-packages\pandas\core\generic.py", line 3976, in to_csv
+    return DataFrameRenderer(formatter).to_csv(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        path_or_buf,
+        ^^^^^^^^^^^^
+    ...<14 lines>...
+        storage_options=storage_options,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Projects\wildfires-project\.venv\Lib\site-packages\pandas\io\formats\format.py", line 1025, in to_csv
+    csv_formatter.save()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Projects\wildfires-project\.venv\Lib\site-packages\pandas\io\formats\csvs.py", line 251, in save
+    with get_handle(
+         ~~~~~~~~~~^
+        self.filepath_or_buffer,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        storage_options=self.storage_options,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ) as handles:
+    ^
+  File "C:\Projects\wildfires-project\.venv\Lib\site-packages\pandas\io\common.py", line 930, in get_handle
+    handle = open(
+        handle,
+    ...<3 lines>...
+        newline="",
+    )
+OSError: [Errno 22] Invalid argument: 'data\\processed\\synthetic\\firms_spain_background_weather_partial.csv'
