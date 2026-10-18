@@ -151,6 +151,13 @@ output:
   # Enriched background days (negatives) for the occurrence model, key
   # `background_id`, built by the team with the same everyday schema.
   background_days: data/processed/expanded/background_days.csv
+  # Tasas empíricas CCAA×día (Plan D): P(≥1 detección | CCAA, día).
+  # Empirical CCAA-day fire rates (Plan D), written by notebook 04.
+  ccaa_day_fire_rates: data/processed/predictions/ccaa_day_fire_rates.csv
+  # Curvas de fiabilidad de la calibración de excedencia (Plan D, ruta C):
+  # por margen (km), observado vs predicho + métricas. Escrito por el nb 04.
+  # Exceedance-calibration reliability curves (Plan D, route C), by margin.
+  calibration_reliability: data/processed/predictions/calibration_reliability.csv
 
 paths:
   notebooks: notebooks
@@ -194,3 +201,12 @@ modeling:
     # Max distance (km) to a SAME-DAY detection below which a background row
     # is a label leak and is rejected by `validate_background_days`.
     leakage_max_km: 1.0
+    # Número de tramos de riesgo del ranking (Plan D): 5 = quintiles con
+    # etiquetas Muy bajo/Bajo/Medio/Alto/Muy alto (`analysis/deployment.py`).
+    # Number of risk bands for the ranking (Plan D); 5 = quintiles.
+    risk_bands: 5
+    # Márgenes espaciales (km) de la calibración de excedencia (Plan D, ruta C,
+    # `analysis/calibration.py`): P(≥1 detección a ≤ R km ese día). La
+    # calibración puntual se descarta (prevalencia casi nula, no estimable).
+    # Exceedance-calibration spatial margins (km), Plan D route C.
+    calibration_margins_km: [5.0, 10.0, 20.0]

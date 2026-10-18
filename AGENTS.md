@@ -70,8 +70,17 @@ CSV chain under `data/processed/` — every name denotes its contents, each feed
   (the experiment loop lives in the notebook): `occurrence_model.py` (model
   candidates incl. class-balanced variants, per-fold scaler, fold-fit one-hot,
   continuous/categorical policy incl. posteriors), `ablation.py`
-  (`ablation_verdict` promotion gate), `deployment.py`
-  (`ccaa_day_fire_rates` — empirical Plan-D CCAA×day fire-rate table)
+  (`ablation_verdict` promotion gate), `deployment.py` (Plan-D deployment unit:
+  `ccaa_day_fire_rates` empirical CCAA×day fire-rate table, `quantile_bands`/
+  `add_risk_bands` relative 5-band triage, `join_ccaa_fire_rates` base-rate join),
+  `calibration.py` (Plan-D route C, **provisional**: wide-margin exceedance
+  probability — `margin_positive_labels` same-day `R`-km labeling,
+  `fit_isotonic`/`apply_isotonic`, `prior_correct` odds rescale,
+  `reliability_curve`/`calibration_metrics` (Brier/log-loss/ECE),
+  `cross_fitted_isotonic` day-blocked cross-fit, `exceedance_base_rate`
+  model-free background base rate + day-bootstrap CI, `dedupe_events`,
+  `calibrate_exceedance`/`exceedance_summary` orchestrator; margins
+  `EXCEEDANCE_MARGINS_KM` = {5,10,20} km)
 - `src/wildfire/geo/` — CCAA boundaries (`regions.py`: `load_boundaries` with
   `make_valid`, `assign_ccaa` — `within` join in EPSG:3035 + `sjoin_nearest`
   fallback ≤ `ccaa.nearest_max_distance_m`, keep-first dedupe, `REGION_NAME_MAP`
@@ -146,13 +155,18 @@ Celda 3 `load_weather_for_clc` → Celda 4 CLC → Celda 5 decided filter [`clc_
 Comments are bilingual ES/EN; cells only orchestrate — acquisition logic >5 lines lives in `src/`.
 
 `notebooks/04_aprendizaje_supervisado.ipynb` is the supervised occurrence model
-(15 cells, bilingual): load positives + `background_days.csv` → `validate_background_days`
+(19 cells, bilingual): load positives + `background_days.csv` → `validate_background_days`
 → `sample_background` → `assemble_modeling_frame` + `add_season` → blocked baseline
 → candidate-model table (`model_candidates`, incl. balanced variants) → reintegration
 (`fit_background_scorer` scores both classes) → ablation + negative controls
-(`ablation_verdict`) → outputs (`occurrence_scores.csv`, fold-metrics CSV, PR curves,
-per-CCAA choropleth, permutation importance, empirical CCAA×day fire rates, package
-versions) → methods note. Runs headless with `nbclient` (cwd = `notebooks/`); the
+(`ablation_verdict`) → **fold audit of `season/2024-Q1`** (banned-column check,
+trivial calendar/CCAA control, per-class profile, permutation) → outputs
+(`occurrence_scores.csv` with `risk_band`/`risk_percentile`/`ccaa_fire_rate`,
+fold-metrics CSV, `ccaa_day_fire_rates.csv`, PR curves, per-CCAA choropleth,
+permutation importance, package versions) → **wide-margin exceedance calibration**
+(section 8, PROVISIONAL: train 2023 → calibrate 2024, isotonic + prior correction,
+cross-fitted reliability, margins {5,10,20} km → `calibration_reliability.csv`) →
+methods note. Runs headless with `nbclient` (cwd = `notebooks/`); the
 prerequisite background artifact is built by `notebooks/02d_background_data.ipynb`.
 
 ## Gotchas
@@ -214,7 +228,11 @@ prerequisite background artifact is built by `notebooks/02d_background_data.ipyn
   (`drop_leaking_background` with `leakage_max_km`), so the saved file passes
   `validate_background_days` as-is. The pool (~23.9k) is below
   `background_ratio: 2` × 23,142, so `sample_background` returns the whole pool
-  (~1.03:1) until more background is generated.
+  (~1.03:1) until more background is generated. The pool is being filled
+  **incrementally** (weather 24,500/100,000 skeleton rows): check with
+  `python scripts/background_pool_status.py` (read-only), runbook + demo caveat
+  sheet in `docs/provisional-status.md`. Not frozen — the **demo is presented
+  as provisional**; all model-derived numbers shift when it fills.
 
 - **Occurrence model (block 04, phase 2)**: PCA provenance verified 2026-10-18 —
   `fit_weather_pca` reproduces `features_a.csv` PC1–7 (max |diff| ~1e-15, k=7,

@@ -84,13 +84,31 @@ unmapped → budget sums `NaN`; no rows ever dropped.
   (empirical Plan-D base rate). Ablation verdicts stay provisional until the
   background pool reaches `background_ratio: 2`. Plan:
   `planning/2026-10-18_supervised-training-phase2.md`.
-- Supervised deployment follow-up (Plan D, open): the score↔rate **calibration**
-  of the ranking against the empirical CCAA×day fire rates
-  (`analysis/deployment.py::ccaa_day_fire_rates`) is still undecided; the model
-  ships in ranking-only mode meanwhile. Point-level calibration not recommended.
-- Background pool fill (owner: team) toward `background_ratio: 2` (≥ 46,284 rows,
-  currently ~23.9k); until then every ablation verdict is provisional
-  (`sample_background` falls back to the whole pool).
+- Supervised deployment unit — Plan D (2026-10-18): **A + B done** — relative
+  `risk_band`/`risk_percentile` (5 Spanish quintiles, per protocol) and the
+  empirical CCAA×day base rate persisted (`ccaa_day_fire_rates.csv`) + joined as
+  `ccaa_fire_rate` in `occurrence_scores.csv` (all in notebook 04 /
+  `analysis/deployment.py`; docs in `docs/deployment-unit-A-B.md`). The
+  `season/2024-Q1` anomaly is audited in nb04 section 6 (genuinely separable;
+  control PR-AUC 0.45). Still [OPEN]: the offline **demo** (below) and freezing
+  the background pool. Point-level calibration not recommended.
+- **C — calibrated exceedance probability** (2026-10-18, PROVISIONAL): P(≥1
+  detection ≤ R km that day), train 2023 → calibrate 2024, isotonic +
+  prior-correction to the measured base rate, cross-fitted reliability, margins
+  R∈{5,10,20} km (`analysis/calibration.py`, nb04 section 8,
+  `data/processed/predictions/calibration_reliability.csv`, docs in
+  `docs/calibration-C.md`). Measured base rates 0.13%/0.50%/1.79% per point-day;
+  ECE ≈2.6 pts. Not a point probability; shifts when the pool is frozen.
+- **Offline demo** (backlog, no new deps): static report from A+B — CCAA
+  base-rate choropleth, band distribution, PR curves, fold-audit verdict; extend
+  with C's reliability curves. No live scorer / interactive dashboard planned.
+- Background pool **incremental fill in progress** (owner: team) toward
+  `background_ratio: 2` (≥ 46,284 rows; weather 24,500/100,000 skeleton rows,
+  pool ~23.9k). No freeze now: **demo is presented as provisional** and the full
+  pool is expected for the real demo. Monitor with
+  `python scripts/background_pool_status.py`; runbook + caveat sheet in
+  `docs/provisional-status.md`. Until filled every ablation/calibration number
+  is provisional (`sample_background` uses the whole pool).
 - ~~Boundaries source decision (open item 2)~~ — resolved 2026-10-02 (team GeoJSON).
 - Git tracking policy for large generated CSVs (open item 3).
 - README drift (open item 4; `build_dataset.py` deleted 2026-10-03 as superseded);

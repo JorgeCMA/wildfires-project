@@ -180,9 +180,19 @@ def occurrence_settings() -> dict:
     leakage = float(settings.get("leakage_max_km", 1.0))
     if leakage < 0:
         raise ValueError(f"leakage_max_km must be >= 0, got {leakage!r}")
+    risk_bands = int(settings.get("risk_bands", 5))
+    if risk_bands < 2:
+        raise ValueError(f"risk_bands must be >= 2, got {risk_bands!r}")
+    margins = [
+        float(m) for m in settings.get("calibration_margins_km", [5.0, 10.0, 20.0])
+    ]
+    if not margins or any(m <= 0 for m in margins):
+        raise ValueError(f"calibration_margins_km must be positive, got {margins!r}")
     settings["background_ratio"] = ratio
     settings["cv_groups"] = groups
     settings["leakage_max_km"] = leakage
+    settings["risk_bands"] = risk_bands
+    settings["calibration_margins_km"] = margins
     return settings
 
 
