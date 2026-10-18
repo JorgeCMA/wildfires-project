@@ -84,6 +84,13 @@ unmapped → budget sums `NaN`; no rows ever dropped.
   (empirical Plan-D base rate). Ablation verdicts stay provisional until the
   background pool reaches `background_ratio: 2`. Plan:
   `planning/2026-10-18_supervised-training-phase2.md`.
+- Supervised deployment follow-up (Plan D, open): the score↔rate **calibration**
+  of the ranking against the empirical CCAA×day fire rates
+  (`analysis/deployment.py::ccaa_day_fire_rates`) is still undecided; the model
+  ships in ranking-only mode meanwhile. Point-level calibration not recommended.
+- Background pool fill (owner: team) toward `background_ratio: 2` (≥ 46,284 rows,
+  currently ~23.9k); until then every ablation verdict is provisional
+  (`sample_background` falls back to the whole pool).
 - ~~Boundaries source decision (open item 2)~~ — resolved 2026-10-02 (team GeoJSON).
 - Git tracking policy for large generated CSVs (open item 3).
 - README drift (open item 4; `build_dataset.py` deleted 2026-10-03 as superseded);

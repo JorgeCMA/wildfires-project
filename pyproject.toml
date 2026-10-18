@@ -40,7 +40,9 @@ where = ["src"]
 [tool.pytest.ini_options]
 markers = [
     "integration: real network calls to Open-Meteo (excluded by default; run with -m integration)",
+    "experiment: opt-in slow modeling experiments on real data (excluded by default; run with -m experiment)",
 ]
-# Excluded by default: a plain `pytest tests/` never spends API quota.
-# Override with `pytest -m integration` (the CLI -m wins over addopts).
-addopts = "-m 'not integration'"
+# Excluded by default: a plain `pytest tests/` never spends API quota nor runs
+# the heavy modeling experiments. Override with `pytest -m integration` /
+# `pytest -m experiment` (the CLI -m wins over addopts).
+addopts = "-m 'not integration and not experiment'"

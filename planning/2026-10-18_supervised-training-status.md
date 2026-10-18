@@ -1,11 +1,12 @@
 # Supervised training — status & next steps (after WS1–WS4)
 
-**Date**: 2026-10-18. **Status**: WS1–WS4 implemented and green; notebook 04
-runs headless end-to-end on real data. This file is the running status derived
-from `planning/2026-10-18_supervised-training-implementation.md` (the plan) and
-`planning/plan_supervised_implementation.md` (the strategy). Commit:
-`8f6f10f` — "Implement supervised occurrence pipeline (WS1-WS4) + raw background
-artifact".
+**Date**: 2026-10-18. **Status**: WS1–WS5 done, **phase 2 (WS8–WS12) done**
+(`planning/2026-10-18_supervised-training-phase2.md`); notebook 04 runs headless
+end-to-end on real data. This file is the running status derived from
+`planning/2026-10-18_supervised-training-implementation.md` (the plan) and
+`planning/plan_supervised_implementation.md` (the strategy). Commits:
+`8f6f10f` (WS1–WS4 + raw background artifact), `7ce65db` (phase-2 plan),
+`1e19f9f` (phase-2 WS8–WS12).
 
 **Objective (unchanged)**: a *risk ranking* of fire occurrence from everyday
 (non-satellite) conditions. Positives = FIRMS detections
@@ -24,10 +25,14 @@ probabilities**.
   `notebooks/02d_background_data.ipynb` was fixed and **regenerated in raw units**
   (key `background_id`, satellite columns dropped, leakage rows dropped). A
   descriptive z-scored copy (`background_days_normalized.csv`) is EDA-only.
-- `pytest tests/` = **550 passed, 2 deselected**; touched files are ruff/mypy clean.
+- `pytest tests/` = **559 passed, 2 deselected** (+ model-experiment suite marked
+  `experiment`, excluded by default); touched files are ruff/mypy clean.
 - Notebook 04: best provisional model is `hist_gradient_boosting`; the
   reintegration candidates are **not promoted** (ΔPR-AUC +0.0039, CI95%
   [−0.0033, +0.0116]); negative controls correctly stay unpromoted.
+- **Phase 2 closed**: PCA provenance verified (refit reproduces `features_a.csv`);
+  5 model candidates; posterior encoding available; empirical CCAA×day fire rates
+  reported. Ablation verdicts remain **provisional** until the pool is frozen.
 
 ---
 
@@ -121,16 +126,56 @@ mypy src/wildfire/processing/occurrence.py
 
 ---
 
+## Phase-2 update (WS8–WS12, commit `1e19f9f`)
+
+- **WS8 — PCA provenance: resolved.** `fit_weather_pca(positives)` reproduces
+  `features_a.csv` PC1–7 exactly (max |diff| ~1e-15, k=7, cumulative variance
+  0.9152); regression test `tests/test_pca_weather.py::TestAgainstRealFeaturesA`.
+  No persisted PCA pipeline is needed.
+- **WS9 — candidate encoding: mechanism done, verdict deferred.** `score(...,
+  include_posteriors=True)` returns the 12 k12 posteriors;
+  `CANDIDATE_POSTERIOR_FEATURES` is an allowed candidate block. Provisional:
+  one-hot Δ +0.0039 (CI95% [−0.0033, +0.0116]), 12 posteriors Δ +0.0061
+  (CI95% [−0.0018, +0.0140]) — **neither promotes**.
+- **WS10 — model set: done.** `model_candidates` → `logistic`,
+  `logistic_balanced`, `random_forest`, `random_forest_balanced`,
+  `hist_gradient_boosting`; **no per-fold tuning** (optuna stays [OPEN]). nb04
+  still selects `hist_gradient_boosting`.
+- **WS11 — deployment unit: done.** `analysis/deployment.py::ccaa_day_fire_rates`
+  (+ `tests/test_deployment.py`), wired into nb04's outputs cell.
+
+### Temporal-split ratio experiment (opt-in, new)
+
+`tests/test_temporal_ratio_experiment.py` (marker `experiment`, run with
+`pytest -m experiment -s`) sweeps negative:positive ratios **{0.25, 0.5, 1.0,
+2.0}** with a strict **train = 2023, validate = 2024** split (negatives drawn
+per year; 2023 pool caps the train ratio at ≈0.82). Results:
+
+| ratio | train neg/pos | valid neg/pos | valid prevalence | mean PR-AUC | mean ROC-AUC |
+|------:|--------------:|--------------:|-----------------:|------------:|-------------:|
+| 0.25 | 0.25 | 0.25 | 0.800 | 0.932 | 0.813 |
+| 0.50 | 0.50 | 0.50 | 0.667 | 0.875 | 0.813 |
+| 1.00 | 0.82 | 1.00 | 0.500 | 0.782 | 0.814 |
+| 2.00 | 0.82 | 1.41 | 0.415 | 0.724 | 0.815 |
+
+**Reading**: absolute PR-AUC moves with the sampled prevalence (its no-skill
+baseline *is* prevalence), while **ROC-AUC is essentially flat (~0.81)** across
+ratios — the ranking skill is robust to the balance and to the temporal split.
+Best per ratio: RF (0.25), HGB (0.5), RF-balanced (1.0/2.0). This is an
+exploratory check, not a replaceable baseline (single temporal fold, everyday
+features only, no candidates).
+
+---
+
 ## What is next
 
 1. **Freeze / grow the pool, then re-report.** The metrics above are on an
    unfrozen pool; re-run once the fill reaches `background_ratio: 2` (or is
    frozen) and report the baseline PR-AUC + per-fold min alongside every number.
-2. **PCA provenance [OPEN]** — verify `fit_weather_pca` reproduces the
-   `features_a.csv` / 03b space before trusting `cluster_meteo` values; otherwise
-   the candidate is scored in a different space.
-3. **WS6 remainder** — finish the AGENTS notebook-04 outline and add a PCA
-   provenance entry to TODO.
+2. ~~**PCA provenance [OPEN]**~~ — **resolved** in WS8; `fit_weather_pca`
+   reproduces the `features_a.csv` / 03b space.
+3. ~~**WS6 remainder**~~ — **done** (AGENTS notebook-04 outline + analysis
+   modules; TODO PCA entry closed).
 4. **Decide the encoding of `cluster_meteo`** — one-hot categorical (default) vs
    the 12 GMM posteriors.
 5. **Candidate model set / tuning budget** — currently the provisional three with
@@ -141,10 +186,12 @@ mypy src/wildfire/processing/occurrence.py
 
 ## Open decisions carried
 
-- [OPEN] `cluster_meteo` categorical (12 levels) vs 12 posteriors.
-- [OPEN] candidate model set + tuning budget.
-- [OPEN] deployment unit / calibration route (Plan D).
-- [OPEN] PCA provenance (blocker for trusting `cluster_meteo`).
+- [OPEN] `cluster_meteo` categorical (12 levels) vs 12 posteriors (deferred to
+  pool freeze; provisional run slightly favours posteriors, neither promotes).
+- [OPEN] candidate model set + tuning budget (WS10: 5 candidates, no tuning).
+- [OPEN] deployment unit / calibration route (Plan D) — ranking + CCAA-day rates
+  done; score↔rate calibration still open.
+- [x] PCA provenance — resolved (WS8).
 - [OPEN] git-tracking policy for large generated CSVs (repo currently tracks
   them, incl. `background_days*.csv` and `predictions/*.csv`).
 

@@ -42,7 +42,7 @@ Phase 2 exists to remove those two caveats before any number is published.
 | WS9 (candidate encoding) | ◑ mechanism done, decision deferred | provisional comparison below |
 | WS10 (model set) | ✅ done (no tuning) | 5 candidates, test updated |
 | WS11 (deployment unit) | ✅ done | `analysis/deployment.py` + tests + nb04 cell |
-| WS12 (docs) | ✅ mostly done | AGENTS modules/04/baselines, TODO PCA closed |
+| WS12 (docs) | ✅ done | AGENTS modules/04/background chain/experiment marker, TODO PCA + calibration/pool closed |
 
 - **WS8**: `fit_weather_pca(positives)` reproduces `features_a.csv` PC1–7 exactly
   (max |diff| ~1e-15, k=7, cumulative variance 0.9152), so the refit policy is
@@ -189,6 +189,13 @@ methods note.
   (05 stage feeding only 04).
 - `TODO.md`: PCA provenance (closed by WS8), calibration follow-up, larger pool.
 - Update the status doc with the phase-2 re-run.
+
+**Done (2026-10-18)**: `AGENTS.md` documents `analysis/` modules, the notebook-04
+outline, the supervised 05 branch and the new `experiment` marker; the baseline
+counts were refreshed (ruff 34, format 33 files, mypy 39). `TODO.md` carries the
+PCA closure plus the calibration and pool-fill follow-ups. The status doc has a
+phase-2 section. Additions stay non-destructive — no existing artifact was
+rewritten.
 
 **Deliverable**: docs match reality; suite green.
 

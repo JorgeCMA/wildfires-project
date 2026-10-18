@@ -45,6 +45,8 @@ CSV chain under `data/processed/` — every name denotes its contents, each feed
 4. `enriched/firms_spain_weather_clc.csv` — + `clc_class`, neighbors, `clc_uniform_surroundings` (47,505×47)
 5. `enriched/firms_spain_full_enrichment.csv` — + `ccaa`, `prevention_current`, `prevention_prev{N}`, `extinction_prev{N}` (full-enrichment output, 30,931×51 after the decided `clc!=1` + `type==0` filters; N = `ccaa.budget_lookback_years`, extinction excludes the current year — no leakage; `firms_spain_final.csv` is reserved for the post-exploration/dedup modeling input)
 
+**Supervised branch (05, feeds only notebook 04)**: `expanded/firms_spain_final_lags_index.csv` (positives) + `expanded/background_days.csv` (negatives, built by `notebooks/02d_background_data.ipynb`) → notebook 04 occurrence ranking. This branch does **not** feed the FIRMS enrichment chain above; the two meet only in `expanded/`.
+
 - `src/wildfire/data/` — FIRMS CSV loading (`firms.py`), CLCPlus tile listing (`clc.py`),
   Open-Meteo single-row client (`openmeteo.py`), regional budget CSV (`ccaa.py`)
 - `src/wildfire/enrichment/` — `merge_sensors.py` (concat + confidence),
@@ -114,6 +116,17 @@ Some tests load actual CSVs from disk — they will fail if data files are missi
   the interpolation tests use a synthetic in-memory payload (no JSON on disk since 2026-10-17)
 
 These are **not** marked as integration. If you see failures on a fresh checkout, these are why.
+
+### Experiment tests
+
+`@pytest.mark.experiment` is **registered** in `pyproject.toml` and excluded from
+the default `addopts` (`not integration and not experiment`); run it explicitly
+with `pytest -m experiment -s`. Currently only
+`tests/test_temporal_ratio_experiment.py`, an opt-in modeling study on real data:
+it sweeps background ratios {0.25, 0.5, 1.0, 2.0} under a strict **train = 2023,
+validate = 2024** temporal split (negatives drawn per year) and prints a
+PR-AUC/ROC-AUC table. It recombines the public units only — it does not touch the
+pipeline or replace the blocked-CV baseline.
 
 ### Fixtures
 
