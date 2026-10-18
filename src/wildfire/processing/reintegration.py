@@ -31,6 +31,7 @@ import pandas as pd  # type: ignore[import-untyped]
 from wildfire.processing.pca_weather import fit_weather_pca
 from wildfire.processing.typology import (
     K12_PC_COLUMNS,
+    K12_POSTERIOR_COLUMNS,
     K12Typology,
     fit_k12_typology,
 )
@@ -140,11 +141,16 @@ class BackgroundScorer:
         frame = df[pca_input_columns()]
         return self.pca_pipeline.transform(frame)[:, : self.n_components]
 
-    def score(self, df: pd.DataFrame) -> pd.DataFrame:
+    def score(
+        self, df: pd.DataFrame, *, include_posteriors: bool = False
+    ) -> pd.DataFrame:
         """``cluster_meteo`` + ``score_anomalia`` for the rows of ``df``.
 
         Works for positives (id = ``detection_id``) and background (id =
         ``background_id``): the id column present in ``df`` is carried through.
+        With ``include_posteriors=True`` the 12 GMM posterior columns
+        (``K12_POSTERIOR_COLUMNS``) are appended, the alternative encoding of
+        the ``cluster_meteo`` candidate (PLAN §B.2.2).
         """
         id_col = _id_column(df)
         pcs = self._pc_scores(df)
@@ -167,6 +173,8 @@ class BackgroundScorer:
         out[SCORE_ANOMALIA_COL] = np.clip(
             _minmax(mean, self.score_lo, self.score_hi), 0.0, 1.0
         )
+        if include_posteriors:
+            out[K12_POSTERIOR_COLUMNS] = labels[K12_POSTERIOR_COLUMNS].to_numpy()
         return out
 
 

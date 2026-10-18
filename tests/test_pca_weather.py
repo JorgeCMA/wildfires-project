@@ -14,6 +14,7 @@ from wildfire.processing.pca_weather import (
     pca_input_columns,
     select_n_components,
 )
+from wildfire.processing.typology import K12_PC_COLUMNS
 
 
 def _make_weather_df(n=60, seed=7):
@@ -152,3 +153,45 @@ class TestFitWeatherPca:
             "scale",
             "pca",
         ]
+
+
+class TestAgainstRealFeaturesA:
+    """WS8: ``fit_weather_pca`` reproduces the 03a/03b ``features_a.csv`` space.
+
+    ``BackgroundScorer`` (reintegration) refits the weather PCA on the positives
+    while the persisted k12 typology was fit on ``features_a.csv`` (03a). This
+    test pins the two to the same space: PC1-7, k = 7 and cumulative variance
+    ~0.915, so positive ``cluster_meteo`` labels match the persisted typology.
+    """
+
+    def test_refit_reproduces_features_a(self):
+        from wildfire.data.io import load_csv
+
+        try:
+            positives = load_csv(
+                "data/processed/expanded/firms_spain_final_lags_index.csv"
+            )
+            features_a = load_csv("data/processed/unsupervised/features_a.csv")
+        except FileNotFoundError:
+            pytest.skip("expanded/03 artifacts not on disk")
+
+        result = fit_weather_pca(positives)
+
+        assert result.n_components == len(K12_PC_COLUMNS)
+        assert result.variance_ratio[: result.n_components].sum() == pytest.approx(
+            0.915, abs=0.01
+        )
+
+        scores = result.scores.copy()
+        scores["detection_id"] = positives["detection_id"].to_numpy()
+        merged = scores.merge(features_a, on="detection_id", suffixes=("_new", "_old"))
+        assert len(merged) == len(positives)
+
+        for pc in K12_PC_COLUMNS:
+            new = merged[f"{pc}_new"].to_numpy()
+            old = merged[f"{pc}_old"].to_numpy()
+            # PCA sign is indeterminate: match up to a global sign flip.
+            diverges = min(np.max(np.abs(new - old)), np.max(np.abs(new + old)))
+            assert diverges == pytest.approx(0.0, abs=1e-9), (
+                f"{pc} diverges from features_a"
+            )

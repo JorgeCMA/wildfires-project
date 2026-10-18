@@ -32,17 +32,19 @@ from sklearn.preprocessing import StandardScaler  # type: ignore[import-untyped]
 
 from wildfire.processing.occurrence import (
     CANDIDATE_FEATURES,
+    CANDIDATE_POSTERIOR_FEATURES,
     EVERYDAY_FEATURES,
 )
 
 #: Nominal everyday columns: one-hot encoded, never standardized.
 DEFAULT_CATEGORICAL: list[str] = ["ccaa", "clc_class"]
 
-#: Reintegration candidates by kind (subset of ``CANDIDATE_FEATURES``).
+#: Reintegration candidates by kind (subset of ``CANDIDATE_FEATURES``). The k12
+#: posterior columns are the continuous alternative to ``cluster_meteo``.
 CANDIDATE_CATEGORICAL: list[str] = ["cluster_meteo"]
 CANDIDATE_CONTINUOUS: list[str] = [
     c for c in CANDIDATE_FEATURES if c not in CANDIDATE_CATEGORICAL
-]
+] + list(CANDIDATE_POSTERIOR_FEATURES)
 
 #: Fixed column policy derived from ``EVERYDAY_FEATURES``.
 CATEGORICAL_FEATURES: list[str] = list(DEFAULT_CATEGORICAL)
@@ -67,17 +69,30 @@ def continuous_columns(frame: pd.DataFrame) -> list[str]:
 
 
 def model_candidates(seed: int = 42) -> dict[str, Any]:
-    """The provisional three estimators, a fresh instance per call.
+    """The provisional model set, a fresh instance per call.
 
     ``LogisticRegression`` is the interpretable floor (permutation
-    importance), ``RandomForestClassifier`` and
-    ``HistGradientBoostingClassifier`` the non-linear candidates. sklearn
-    only, sensible defaults; no tuning budget (optuna is OPEN).
+    importance); each family also has a class-balanced variant because the
+    background sampling is only ~1:2 (PLAN §C.1). ``RandomForestClassifier``
+    and ``HistGradientBoostingClassifier`` are the non-linear candidates.
+    sklearn only, sensible defaults; no tuning budget (optuna is OPEN).
+
+    Class weights are a mild change at ~1:2, so the balanced and unbalanced
+    variants are compared side by side rather than chosen a priori.
     """
     return {
         "logistic": LogisticRegression(max_iter=1000, random_state=seed),
+        "logistic_balanced": LogisticRegression(
+            max_iter=1000, random_state=seed, class_weight="balanced"
+        ),
         "random_forest": RandomForestClassifier(
             n_estimators=300, random_state=seed, n_jobs=-1
+        ),
+        "random_forest_balanced": RandomForestClassifier(
+            n_estimators=300,
+            random_state=seed,
+            n_jobs=-1,
+            class_weight="balanced_subsample",
         ),
         "hist_gradient_boosting": HistGradientBoostingClassifier(random_state=seed),
     }

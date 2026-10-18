@@ -73,6 +73,17 @@ unmapped → budget sums `NaN`; no rows ever dropped.
   is an EDA-only descriptive copy). 02d drops the all-null satellite columns
   and the 1 same-day leak, so it passes `validate_background_days` as-is;
   pool stays below `background_ratio: 2` until more background is generated.
+- ~~PCA provenance: verify `fit_weather_pca` reproduces the `features_a.csv`/
+  03b space~~ — resolved 2026-10-18: `tests/test_pca_weather.py::
+  TestAgainstRealFeaturesA` shows the refit reproduces PC1–7 exactly
+  (max |diff| ~1e-15, k=7, cumulative variance 0.9152), so `BackgroundScorer`
+  refitting the PCA on positives stays in the persisted typology's space.
+- Supervised occurrence model (block 04) phase 2 (2026-10-18): 5 model
+  candidates (balanced variants), `score(..., include_posteriors=True)` for the
+  12-posterior encoding, and `analysis/deployment.py::ccaa_day_fire_rates`
+  (empirical Plan-D base rate). Ablation verdicts stay provisional until the
+  background pool reaches `background_ratio: 2`. Plan:
+  `planning/2026-10-18_supervised-training-phase2.md`.
 - ~~Boundaries source decision (open item 2)~~ — resolved 2026-10-02 (team GeoJSON).
 - Git tracking policy for large generated CSVs (open item 3).
 - README drift (open item 4; `build_dataset.py` deleted 2026-10-03 as superseded);

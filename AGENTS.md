@@ -23,8 +23,11 @@ python -c "import nbformat; nbformat.validate(nbformat.read('notebooks/01_recopi
 
 No Makefile, no CI, no pre-commit hooks. Commands above are the entire dev workflow.
 
-Baselines (2026-10-03): `ruff check src/ tests/ scripts/` = **28 errors** (pre-existing),
-`ruff format --check` = **16 files** (pre-existing), `mypy src/` = **14 errors** (pre-existing).
+Baselines (2026-10-18, refreshed — the repo grew since the 2026-10-03 counts):
+`ruff check src/ tests/ scripts/` = **34 errors** (`src/ tests/` = 32),
+`ruff format --check src/ tests/ scripts/` = **33 files**, `mypy src/` = **39 errors**
+(all pre-existing: `typology.py`/`unsupervised.py`/pandas stubs). Touched files are
+CLEAN (changed files pass `ruff check`/`ruff format --check`; mypy adds no new errors).
 Don't add new ones; wholesale cleanup is tracked in TODO/compact, not done ad hoc.
 
 ## Architecture
@@ -55,10 +58,18 @@ CSV chain under `data/processed/` — every name denotes its contents, each feed
   fail-closed: missing expected columns warn; covers all 15 weather vars,
   CLC neighbors, `ccaa`/sums via `validate_enriched_ccaa`), occurrence
   contract (`occurrence.py`: `EVERYDAY_FEATURES` allowlist, `CANDIDATE_FEATURES`
-  reintegration candidates, blocked splits, PR-AUC), typology (`typology.py`
+  reintegration candidates + `CANDIDATE_POSTERIOR_FEATURES` alternative encoding,
+  blocked splits, PR-AUC), typology (`typology.py`
   incl. the elected k12: `fit_k12_typology`/`K12Typology`), reintegration
   (`reintegration.py`: `fit_background_scorer` — everything fit on positives
-  only, background scored by the fitted objects)
+  only, background scored by the fitted objects; `score(..., include_posteriors=)`
+  returns the 12 k12 GMM posteriors for the alternative encoding)
+- `src/wildfire/analysis/` — supervised modeling units called by notebook 04
+  (the experiment loop lives in the notebook): `occurrence_model.py` (model
+  candidates incl. class-balanced variants, per-fold scaler, fold-fit one-hot,
+  continuous/categorical policy incl. posteriors), `ablation.py`
+  (`ablation_verdict` promotion gate), `deployment.py`
+  (`ccaa_day_fire_rates` — empirical Plan-D CCAA×day fire-rate table)
 - `src/wildfire/geo/` — CCAA boundaries (`regions.py`: `load_boundaries` with
   `make_valid`, `assign_ccaa` — `within` join in EPSG:3035 + `sjoin_nearest`
   fallback ≤ `ccaa.nearest_max_distance_m`, keep-first dedupe, `REGION_NAME_MAP`
@@ -121,6 +132,16 @@ Celda 3 `load_weather_for_clc` → Celda 4 CLC → Celda 5 decided filter [`clc_
 → Celda 6 `assign_ccaa` + `add_ccaa_budget_sums` → `firms_spain_full_enrichment.csv`).
 Comments are bilingual ES/EN; cells only orchestrate — acquisition logic >5 lines lives in `src/`.
 
+`notebooks/04_aprendizaje_supervisado.ipynb` is the supervised occurrence model
+(15 cells, bilingual): load positives + `background_days.csv` → `validate_background_days`
+→ `sample_background` → `assemble_modeling_frame` + `add_season` → blocked baseline
+→ candidate-model table (`model_candidates`, incl. balanced variants) → reintegration
+(`fit_background_scorer` scores both classes) → ablation + negative controls
+(`ablation_verdict`) → outputs (`occurrence_scores.csv`, fold-metrics CSV, PR curves,
+per-CCAA choropleth, permutation importance, empirical CCAA×day fire rates, package
+versions) → methods note. Runs headless with `nbclient` (cwd = `notebooks/`); the
+prerequisite background artifact is built by `notebooks/02d_background_data.ipynb`.
+
 ## Gotchas
 
 - **`src/wildfire/geo/` exists since 2026-10-02** (`regions.py`: CCAA boundaries from
@@ -181,3 +202,14 @@ Comments are bilingual ES/EN; cells only orchestrate — acquisition logic >5 li
   `validate_background_days` as-is. The pool (~23.9k) is below
   `background_ratio: 2` × 23,142, so `sample_background` returns the whole pool
   (~1.03:1) until more background is generated.
+
+- **Occurrence model (block 04, phase 2)**: PCA provenance verified 2026-10-18 —
+  `fit_weather_pca` reproduces `features_a.csv` PC1–7 (max |diff| ~1e-15, k=7,
+  cumulative variance 0.9152; `tests/test_pca_weather.py::TestAgainstRealFeaturesA`),
+  so `BackgroundScorer` refitting on positives stays in the persisted typology's
+  space. `model_candidates` now returns 5 estimators (three families + balanced
+  variants); `BackgroundScorer.score(..., include_posteriors=True)` exposes the 12
+  k12 GMM posteriors (via `CANDIDATE_POSTERIOR_FEATURES`). Ablation verdicts stay
+  **provisional** until the pool is frozen (`background_ratio: 2`);
+  `analysis/deployment.py::ccaa_day_fire_rates` reports the empirical Plan-D base
+  rate alongside the ranking. See `planning/2026-10-18_supervised-training-phase2.md`.

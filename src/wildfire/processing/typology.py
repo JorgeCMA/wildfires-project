@@ -340,10 +340,13 @@ K12_ELECTED_K = 12
 K12_PC_COLUMNS: list[str] = [f"PC{i}" for i in range(1, 8)]
 
 
-#: Posterior column naming, consistent with ``cluster_labels.csv``
-#: (``gmm_a_k5_full_p{j}`` -> ``gmm_k12_full_p{j}`` for the elected k12).
+#: Posterior columns of the elected k12 GMM (fixed order), as persisted in
+#: ``cluster_labels_k12.csv`` (``gmm_a_k5_full_p{j}`` -> ``gmm_k12_full_p{j}``).
+K12_POSTERIOR_COLUMNS: list[str] = [f"gmm_k12_full_p{j}" for j in range(K12_ELECTED_K)]
+
+
 def _posterior_columns(k: int = K12_ELECTED_K) -> list[str]:
-    return [f"gmm_k12_full_p{j}" for j in range(k)]
+    return list(K12_POSTERIOR_COLUMNS[:k])
 
 
 @dataclass
@@ -436,6 +439,7 @@ __all__ = [
     "GMM_OVERLAP_POSTERIOR",
     "K12_ELECTED_K",
     "K12_PC_COLUMNS",
+    "K12_POSTERIOR_COLUMNS",
     "NMI_TRIVIALITY_MAX",
     "PREPROCESSING_ARI_MIN",
     "SPATIAL_CORR_MIN",

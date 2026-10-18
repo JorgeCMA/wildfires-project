@@ -72,6 +72,18 @@ _BACKGROUND_ALLOWED_LEFTOVERS = frozenset({"rain", "is_day", "type"})
 #: they "exist but are unproven" in the methods note.
 CANDIDATE_FEATURES: list[str] = ["cluster_meteo", "score_anomalia"]
 
+#: Posterior columns of the elected k12 GMM: the alternative encoding of the
+#: ``cluster_meteo`` candidate (12 continuous levels, PLAN §B.2.2). Kept as a
+#: literal here on purpose: ``unsupervised`` imports this module, so importing
+#: ``typology`` (which imports ``unsupervised``) would cycle.
+_K12_POSTERIOR_K = 12
+CANDIDATE_POSTERIOR_FEATURES: list[str] = [
+    f"gmm_k12_full_p{j}" for j in range(_K12_POSTERIOR_K)
+]
+
+#: Everything a candidate block may carry (hard label OR its posterior form).
+_CANDIDATE_ALLOWED: list[str] = [*CANDIDATE_FEATURES, *CANDIDATE_POSTERIOR_FEATURES]
+
 # Everyday (non-satellite) predictors in fixed order: location, date-grain
 # calendar, the 15 weather variables (precipitation, not rain; wd_sin/wd_cos
 # instead of the raw circular direction), CLC center + 8 neighbors, region,
@@ -229,15 +241,16 @@ def _candidate_block(
     """Validate the optional reintegration-candidate frames (PLAN §B.2.4).
 
     Both frames or neither; identical canonical column order (a subset of
-    ``CANDIDATE_FEATURES``, reindexed to the fixed order); row counts match
-    the positives/background frames; no satellite columns.
+    ``CANDIDATE_FEATURES`` or its posterior alternative
+    ``CANDIDATE_POSTERIOR_FEATURES``, reindexed to the fixed order); row
+    counts match the positives/background frames; no satellite columns.
     """
     if (pos_candidates is None) != (neg_candidates is None):
         raise ValueError("pos_candidates and neg_candidates must come together")
     if pos_candidates is None or neg_candidates is None:
         return pd.DataFrame(index=range(n_pos)), pd.DataFrame(index=range(n_neg)), []
     cols = list(dict.fromkeys(pos_candidates.columns))
-    ordered = [c for c in CANDIDATE_FEATURES if c in cols]
+    ordered = [c for c in _CANDIDATE_ALLOWED if c in cols]
     for name, frame, expected in (
         ("pos_candidates", pos_candidates, n_pos),
         ("neg_candidates", neg_candidates, n_neg),
@@ -247,9 +260,9 @@ def _candidate_block(
         banned = [c for c in SATELLITE_BLOCKLIST if c in frame.columns]
         if banned:
             raise ValueError(f"{name} carries satellite columns: {banned}")
-    unknown = [c for c in cols if c not in CANDIDATE_FEATURES]
+    unknown = [c for c in cols if c not in _CANDIDATE_ALLOWED]
     if unknown:
-        raise ValueError(f"Candidate columns outside CANDIDATE_FEATURES: {unknown}")
+        raise ValueError(f"Candidate columns outside the candidate set: {unknown}")
     pos = pos_candidates[ordered].reset_index(drop=True)
     neg = neg_candidates[ordered].reset_index(drop=True)
     return pos, neg, ordered
@@ -266,9 +279,10 @@ def assemble_modeling_frame(
 
     Both frames must carry the identical everyday schema; any satellite
     column in either frame raises ``ValueError``. Reintegration candidates
-    (``cluster_meteo``, ``score_anomalia``) are appended after the everyday
-    block in ``CANDIDATE_FEATURES`` order when both candidate frames are
-    given; they are optional and never mixed into ``EVERYDAY_FEATURES``.
+    (``cluster_meteo``, ``score_anomalia``, or the posterior encoding) are
+    appended after the everyday block in canonical order when both candidate
+    frames are given; they are optional and never mixed into
+    ``EVERYDAY_FEATURES``.
     """
     for name, frame in (("positives", positives), ("background", background)):
         banned = [c for c in SATELLITE_BLOCKLIST if c in frame.columns]

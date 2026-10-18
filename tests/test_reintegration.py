@@ -13,6 +13,7 @@ import pytest
 
 from wildfire.processing.occurrence import (
     CANDIDATE_FEATURES,
+    CANDIDATE_POSTERIOR_FEATURES,
     assemble_modeling_frame,
 )
 from wildfire.processing.reintegration import (
@@ -21,7 +22,10 @@ from wildfire.processing.reintegration import (
     fit_background_scorer,
     score_anomalia,
 )
-from wildfire.processing.typology import K12_ELECTED_K
+from wildfire.processing.typology import (
+    K12_ELECTED_K,
+    K12_POSTERIOR_COLUMNS,
+)
 
 PC_COLUMNS = [f"PC{i}" for i in range(1, 8)]
 WEATHER_COLUMNS = [
@@ -107,6 +111,22 @@ class TestBackgroundScorer:
         ]
         assert scored["cluster_meteo"].between(0, K12_ELECTED_K - 1).all()
         assert scored[SCORE_ANOMALIA_COL].between(0.0, 1.0).all()
+
+    def test_score_include_posteriors_appends_twelve_columns(self):
+        scorer = fit_background_scorer(_positives())
+        background = _weather_rows(24, seed=99).assign(
+            background_id=[f"bg_{i:05d}" for i in range(24)]
+        )
+
+        scored = scorer.score(background, include_posteriors=True)
+
+        assert list(scored.columns) == [
+            "background_id",
+            "cluster_meteo",
+            SCORE_ANOMALIA_COL,
+            *K12_POSTERIOR_COLUMNS,
+        ]
+        assert np.allclose(scored[K12_POSTERIOR_COLUMNS].to_numpy().sum(axis=1), 1.0)
 
     def test_deterministic_under_seed_42(self):
         background = _weather_rows(12, seed=5).assign(
@@ -215,6 +235,34 @@ class TestCandidateFrameContract:
         assert frame["score_anomalia"].iloc[0] == 0.0
         assert frame["score_anomalia"].iloc[n] == 1.0
 
+    def test_posterior_candidates_allowed(self):
+        from wildfire.processing.occurrence import EVERYDAY_FEATURES, LABEL_COL
+
+        positives, background, _, _ = self._frames(with_candidates=False)
+        n, m = len(positives), len(background)
+        pos_c = pd.DataFrame(
+            {
+                "score_anomalia": np.linspace(0, 1, n),
+                **{c: 1.0 / len(K12_POSTERIOR_COLUMNS) for c in K12_POSTERIOR_COLUMNS},
+            }
+        )
+        neg_c = pd.DataFrame(
+            {
+                "score_anomalia": np.linspace(1, 0, m),
+                **{c: 1.0 / len(K12_POSTERIOR_COLUMNS) for c in K12_POSTERIOR_COLUMNS},
+            }
+        )
+        frame = assemble_modeling_frame(
+            positives, background, pos_candidates=pos_c, neg_candidates=neg_c
+        )
+
+        expected = [
+            c
+            for c in [*CANDIDATE_FEATURES, *CANDIDATE_POSTERIOR_FEATURES]
+            if c in pos_c.columns
+        ]
+        assert list(frame.columns) == [*EVERYDAY_FEATURES, *expected, LABEL_COL]
+
     def test_only_one_candidate_frame_raises(self):
         positives, background, pos_c, _ = self._frames(with_candidates=True)
         with pytest.raises(ValueError, match="come together"):
@@ -223,7 +271,7 @@ class TestCandidateFrameContract:
     def test_unknown_candidate_column_raises(self):
         positives, background, pos_c, neg_c = self._frames(with_candidates=True)
         bad = pos_c.assign(satellite_trick=1.0)
-        with pytest.raises(ValueError, match="CANDIDATE_FEATURES"):
+        with pytest.raises(ValueError, match="candidate set"):
             assemble_modeling_frame(
                 positives, background, pos_candidates=bad, neg_candidates=neg_c
             )

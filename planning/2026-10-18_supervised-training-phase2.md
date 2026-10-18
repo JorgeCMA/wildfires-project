@@ -33,6 +33,38 @@ Primary metric **PR-AUC**, secondary ROC-AUC; **no calibrated probabilities**.
 on an unfrozen, undersized pool, and `cluster_meteo` provenance is unverified.
 Phase 2 exists to remove those two caveats before any number is published.
 
+## Phase-2 progress (2026-10-18)
+
+| WS | Status | Evidence |
+|----|--------|----------|
+| WS7 (freeze pool) | ⏳ blocked on team data | pool 23,895 < 46,284 |
+| WS8 (PCA provenance) | ✅ done | `tests/test_pca_weather.py::TestAgainstRealFeaturesA` |
+| WS9 (candidate encoding) | ◑ mechanism done, decision deferred | provisional comparison below |
+| WS10 (model set) | ✅ done (no tuning) | 5 candidates, test updated |
+| WS11 (deployment unit) | ✅ done | `analysis/deployment.py` + tests + nb04 cell |
+| WS12 (docs) | ✅ mostly done | AGENTS modules/04/baselines, TODO PCA closed |
+
+- **WS8**: `fit_weather_pca(positives)` reproduces `features_a.csv` PC1–7 exactly
+  (max |diff| ~1e-15, k=7, cumulative variance 0.9152), so the refit policy is
+  faithful and the PCA provenance item is closed (TODO + nb04 methods note).
+- **WS9**: `BackgroundScorer.score(..., include_posteriors=True)` now returns the
+  12 k12 posteriors; `CANDIDATE_POSTERIOR_FEATURES` is an allowed candidate block,
+  and the model policy treats posteriors as continuous. Provisional comparison on
+  the current pool (best model `hist_gradient_boosting`): hard-label one-hot
+  ΔPR-AUC +0.0039 (CI95% [−0.0033, +0.0116]); 12 posteriors +0.0061
+  (CI95% [−0.0018, +0.0140]) — **neither promotes**; the encoding decision waits
+  for the frozen pool.
+- **WS10**: `model_candidates` now returns `logistic`, `logistic_balanced`,
+  `random_forest`, `random_forest_balanced`, `hist_gradient_boosting`. Decision:
+  **no per-fold tuning in phase 2** (defaults + balanced variants); optuna stays
+  [OPEN]. nb04 re-run still selects `hist_gradient_boosting`.
+- **WS11**: `analysis/deployment.py::ccaa_day_fire_rates` (+ `tests/test_deployment.py`)
+  reports the empirical `P(>=1 detection | CCAA, day)` with a pooled `ALL` row;
+  wired into notebook 04's outputs cell and the methods note.
+- **Verification**: `pytest tests/` = **559 passed, 2 deselected**; notebook 04
+  executes headless end-to-end; changed files are ruff/mypy clean (the refreshed
+  baselines are in AGENTS.md).
+
 ## Scope & boundary
 
 - **Team (data side)**: grows the enriched background pool toward
@@ -46,15 +78,13 @@ Phase 2 exists to remove those two caveats before any number is published.
 
 - [ ] **Pool freeze rule**: publish numbers only once the pool is frozen at
       `ratio 2`, or the team declares it stopped (report actual ratio either way).
-- [ ] **PCA provenance policy [OPEN]**: reuse the persisted 03b space vs refit —
-      default: if `fit_weather_pca` does *not* reproduce `features_a.csv`,
-      persist the pipeline and make `BackgroundScorer` reuse it.
-- [ ] **`cluster_meteo` encoding**: hard labels one-hot (default) vs the 12 GMM
-      posteriors — decide by the ablation gate, not by preference.
-- [ ] **Model set + tuning budget**: default = provisional three + class weights,
-      small hand grid per fold, seed 42, **no new deps**; optuna stays [OPEN].
-- [ ] **Deployment unit**: ranking-only default; CCAA-day empirical rate as the
-      cheap, actionable upgrade. Point-level calibration stays not recommended.
+- [x] **PCA provenance policy**: resolved 2026-10-18 — the refit reproduces
+      `features_a.csv`, so no persisted pipeline is needed (WS8).
+- [ ] **`cluster_meteo` encoding**: hard labels one-hot vs 12 posteriors —
+      provisional run favours posteriors but neither promotes; decide at freeze.
+- [x] **Model set + tuning budget**: 5 candidates (three families + balanced
+      variants), no per-fold tuning in phase 2; optuna stays [OPEN] (WS10).
+- [x] **Deployment unit**: ranking-only + empirical CCAA-day fire rates (WS11).
 - [ ] **Ablation margin**: today `margin=0.0`; decide whether a small practical
       margin (e.g. +0.005) is required to promote.
 

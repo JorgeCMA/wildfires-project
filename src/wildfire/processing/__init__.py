@@ -29,6 +29,7 @@ from .events import (
 from .occurrence import (
     BACKGROUND_ID_COL,
     CANDIDATE_FEATURES,
+    CANDIDATE_POSTERIOR_FEATURES,
     EVERYDAY_FEATURES,
     SATELLITE_BLOCKLIST,
     SUBDAILY_DROP,
@@ -148,6 +149,7 @@ __all__ = [
     "ANOMALY_SCORE_COLS",
     "BACKGROUND_ID_COL",
     "CANDIDATE_FEATURES",
+    "CANDIDATE_POSTERIOR_FEATURES",
     "CLC_ENV_FIXED",
     "CLC_NEIGHBOURS",
     "CLUSTERING_SEED",
@@ -172,6 +174,7 @@ __all__ = [
     "ID_COL",
     "K12_ELECTED_K",
     "K12_PC_COLUMNS",
+    "K12_POSTERIOR_COLUMNS",
     "KEPT",
     "K_RANGE",
     "LOG_COLS",

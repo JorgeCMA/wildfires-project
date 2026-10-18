@@ -47,9 +47,21 @@ class TestColumnPolicy:
 
 
 class TestModelCandidates:
-    def test_three_candidates(self):
+    def test_candidate_set(self):
         models = model_candidates()
-        assert set(models) == {"logistic", "random_forest", "hist_gradient_boosting"}
+        assert set(models) == {
+            "logistic",
+            "logistic_balanced",
+            "random_forest",
+            "random_forest_balanced",
+            "hist_gradient_boosting",
+        }
+
+    def test_balanced_variants_set_class_weight(self):
+        models = model_candidates()
+        assert models["logistic_balanced"].class_weight == "balanced"
+        assert models["random_forest_balanced"].class_weight == "balanced_subsample"
+        assert models["logistic"].class_weight is None
 
     def test_fresh_instance_each_call(self):
         first = model_candidates(seed=1)

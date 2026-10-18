@@ -13,6 +13,7 @@ from .ablation import (
     ablation_verdict,
     bootstrap_mean_ci,
 )
+from .deployment import ALL_LABEL, ccaa_day_fire_rates
 from .occurrence_model import (
     CANDIDATE_CATEGORICAL,
     CANDIDATE_CONTINUOUS,
@@ -29,6 +30,7 @@ from .occurrence_model import (
 
 __all__ = [
     "ABLATION_SEED",
+    "ALL_LABEL",
     "CANDIDATE_CATEGORICAL",
     "CANDIDATE_CONTINUOUS",
     "CATEGORICAL_FEATURES",
@@ -40,6 +42,7 @@ __all__ = [
     "bootstrap_mean_ci",
     "categorical_columns",
     "categorical_to_dummies",
+    "ccaa_day_fire_rates",
     "continuous_columns",
     "fold_scaler_apply",
     "fold_scaler_fit",
