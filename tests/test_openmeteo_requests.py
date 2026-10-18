@@ -3,12 +3,11 @@
 La implementación vive en ``wildfire.enrichment.weather_batch`` (módulo de
 producción): aquí se prueba la configuración y la reanudación, el relleno
 del CSV parcial, la construcción de peticiones, la interpolación horaria y
-el POST real (marcado ``integration``).
+el POST real (marcado ``integration``). La respuesta HTTP no se guarda en
+disco: los tests de interpolación usan un payload sintético en memoria.
 """
 
 from __future__ import annotations
-
-import json
 
 import pandas as pd
 import pytest
@@ -16,7 +15,6 @@ import pytest
 from wildfire.config import load_config
 from wildfire.enrichment import load_merged
 from wildfire.enrichment.weather_batch import (
-    OUTPUT_JSON,
     ROW_KEYS,
     build_batch_request,
     build_row_requests,
@@ -196,8 +194,8 @@ def test_build_batch_request_from_first_rows():
 
 
 @pytest.mark.integration
-def test_fetch_next_batch_saves_response(tmp_path):
-    """POST por lotes: ``batch_rows`` filas -> JSON + CSV parcial rellenado."""
+def test_fetch_next_batch_fills_partial(tmp_path):
+    """POST por lotes: ``batch_rows`` filas rellenadas en el CSV parcial."""
     from openmeteo_requests.Client import OpenMeteoRequestsError
 
     batch_rows = load_config()["openmeteo"]["batch_rows"]
@@ -208,83 +206,65 @@ def test_fetch_next_batch_saves_response(tmp_path):
     batch = next_batch(load_partial_or_merged(csv_path))
     assert 0 < len(batch) <= batch_rows
 
-    # Corta tras JSON + CSV (ambos por defecto: OUTPUT_JSON / tmp aquí).
-    # save_path explícito: por defecto escribiría en el JSON rastreado
-    # data/processed/openmeteo_response.json.
-    save_path = tmp_path / "response.json"
     try:
-        assert fetch_next_batch(csv_path=csv_path, save_path=save_path) is None
+        assert fetch_next_batch(csv_path=csv_path) is None
     except OpenMeteoRequestsError as exc:
         # Cuota gastada por la descarga en paralelo: skip, no fail.
         if "429" in str(exc) or "limit" in str(exc).lower():
             pytest.skip(f"Open-Meteo quota exhausted: {exc}")
         raise
 
-    # La respuesta HTTP queda guardada en JSON para reutilizarla después
-    assert save_path.exists()
-    payload = json.loads(save_path.read_text(encoding="utf-8"))
-    url, params = build_batch_request(batch)
-    assert payload["row_start"] == 0
-    assert payload["url"] == url
-    assert payload["params"] == params
-    assert len(payload["responses"]) == len(batch)
-
-    # Todo en UTC: ni la petición ni las respuestas usan zona horaria local
-    assert params["timezone"] == "GMT"
-    assert {record["timezone"] for record in payload["responses"]} == {"GMT"}
-    assert {record["utc_offset_seconds"] for record in payload["responses"]} == {0}
-
-    # Primera y última fila: coordenadas ≈ pedidas (la API devuelve el centro
-    # de la celda), 24 horas desde acq_date y todas las variables pedidas
-    hourly_fields = params["hourly"]
-    for row, record in (
-        (batch.iloc[0], payload["responses"][0]),
-        (batch.iloc[-1], payload["responses"][-1]),
-    ):
-        assert record["latitude"] == pytest.approx(row["latitude"], abs=0.1)
-        assert record["longitude"] == pytest.approx(row["longitude"], abs=0.1)
-        hours = record["hourly"]
-        assert len(hours) == 24
-        assert hours[0]["date"].startswith(str(row["acq_date"])[:10])
-        assert list(hours[0]) == ["date", *hourly_fields]
-
     # CSV parcial: merged + 15 columnas de clima, lote relleno, resto sin tocar
     df = pd.read_csv(csv_path)
-    assert list(df.columns) == [*load_merged().columns, *hourly_fields]
+    assert list(df.columns) == [*load_merged().columns, *weather_fields()]
     assert len(df) == len(load_merged())
     n = len(batch)
     assert df["temperature_2m"].iloc[:n].notna().all()
     assert df["temperature_2m"].iloc[n:].isna().all()
     assert find_resume_row(df) == n
 
-    # La fila 0 del CSV coincide con la interpolación de su respuesta
-    values = interpolate_hourly_fields(
-        payload["responses"][0]["hourly"], df.loc[0, "acq_time"]
-    )
-    assert df.loc[0, "temperature_2m"] == pytest.approx(values["temperature_2m"])
-
 
 # ---------------------------------------------------------------------------
-# interpolate_hourly_fields — sin HTTP: se usa la respuesta ya guardada
+# interpolate_hourly_fields — sin HTTP: payload sintético en memoria
+# (la respuesta HTTP real ya no se guarda en disco)
 # ---------------------------------------------------------------------------
 
 
-def _payload() -> dict:
-    """Respuesta HTTP guardada en ``OUTPUT_JSON``."""
-    assert OUTPUT_JSON.exists(), f"Missing saved response: {OUTPUT_JSON}"
-    return json.loads(OUTPUT_JSON.read_text(encoding="utf-8"))
+def _synthetic_payload(rows: pd.DataFrame) -> dict:
+    """Payload con la misma forma que la respuesta de la API, generado en memoria.
+
+    Un registro por fila, hourly de 24 horas con las 15 variables: valores
+    deterministas distintos por hora/variable/fila para que la interpolación
+    no sea trivial.
+    """
+    hourly_fields = weather_fields()
+    responses = []
+    for row_idx, _row in rows.iterrows():
+        hourly = []
+        for hour in range(24):
+            record = {"date": f"2023-06-15T{hour:02d}:00:00"}
+            for pos, field in enumerate(hourly_fields):
+                record[field] = round(hour * (pos + 1) + row_idx, 3)
+            hourly.append(record)
+        responses.append({"timezone": "GMT", "utc_offset_seconds": 0, "hourly": hourly})
+    return {
+        "row_start": 0,
+        "params": {
+            "latitude": rows["latitude"].tolist(),
+            "longitude": rows["longitude"].tolist(),
+        },
+        "responses": responses,
+    }
 
 
 def _saved_responses() -> list[dict]:
-    """``responses`` de la respuesta HTTP guardada en ``OUTPUT_JSON``."""
-    return _payload()["responses"]
+    """``responses`` del payload sintético de las 3 primeras filas del merged."""
+    return _synthetic_payload(load_merged().head(3))["responses"]
 
 
 def _saved_rows() -> pd.DataFrame:
-    """Filas del CSV (parcial o merged) a las que corresponde la respuesta."""
-    payload = _payload()
-    rows = load_partial_or_merged().iloc[payload["row_start"] :]
-    return rows.iloc[: len(payload["responses"])]
+    """Filas del merged a las que corresponde el payload sintético."""
+    return load_merged().head(3)
 
 
 def test_hourly_index_matches_documentation():
@@ -310,17 +290,12 @@ def test_split_acq_time():
     assert split_acq_time("0000") == (0, 0, 0.0)
 
 
-def test_interpolate_matches_saved_response():
+def test_interpolate_matches_synthetic_response():
     """Cada campo del response se interpola con el % de minutos de su fila."""
-    payload = _payload()
-    responses = payload["responses"]
+    responses = _saved_responses()
     rows = _saved_rows().head(3)
 
-    # El JSON y las filas tienen que corresponder (mismo row_start, mismo orden)
-    assert payload["params"]["latitude"][: len(rows)] == rows["latitude"].tolist()
-    assert payload["params"]["longitude"][: len(rows)] == rows["longitude"].tolist()
-
-    for (_, row), record in zip(rows.iterrows(), responses[: len(rows)], strict=True):
+    for (_, row), record in zip(rows.iterrows(), responses, strict=True):
         hourly = record["hourly"]
         hour, _minutes, pct = split_acq_time(row["acq_time"])
         values = interpolate_hourly_fields(hourly, row["acq_time"])

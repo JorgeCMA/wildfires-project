@@ -145,6 +145,12 @@ output:
   # completarse. El cargador prefiere el terminado y cae en el parcial.
   background_weather_partial: data/processed/synthetic/firms_spain_background_weather_partial.csv
   background_weather: data/processed/synthetic/firms_spain_background_weather.csv
+  # Días de fondo enriquecidos (negativos) del modelo de ocurrencia, con clave
+  # `background_id`. Lo construye el equipo (mismo esquema "everyday" que los
+  # positivos); el lado de modelado solo lo consume.
+  # Enriched background days (negatives) for the occurrence model, key
+  # `background_id`, built by the team with the same everyday schema.
+  background_days: data/processed/expanded/background_days.csv
 
 paths:
   notebooks: notebooks
@@ -183,3 +189,8 @@ modeling:
     cv_groups:
       - season
       - ccaa
+    # Distancia máxima (km) a una detección del MISMO día por debajo de la
+    # cual una fila de fondo se considera fuga de etiqueta y se rechaza.
+    # Max distance (km) to a SAME-DAY detection below which a background row
+    # is a label leak and is rejected by `validate_background_days`.
+    leakage_max_km: 1.0

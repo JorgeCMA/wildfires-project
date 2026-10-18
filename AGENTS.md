@@ -47,12 +47,18 @@ CSV chain under `data/processed/` — every name denotes its contents, each feed
 - `src/wildfire/enrichment/` — `merge_sensors.py` (concat + confidence),
   `clc_enrichment.py` (tile index, neighbor resolution, pixel reads),
   `weather_batch.py` (**production weather path**: 500-row POST batches, resume CSV,
-  429 classification/wait, `load_weather_for_clc`/`finalize_weather_csv`),
+  429 classification/wait, `load_weather_for_clc`/`finalize_weather_csv`,
+  `load_background_weather` — final→partial fallback for the supervised background),
   `weather_enrichment.py` (**old path**, 1 HTTP GET per row — superseded, kept for back-compat)
 - `src/wildfire/processing/` — confidence mapping (`confidence_cat` fixed
   `Categorical ["l","n","h"]`), validation (warnings only, never raises;
   fail-closed: missing expected columns warn; covers all 15 weather vars,
-  CLC neighbors, `ccaa`/sums via `validate_enriched_ccaa`)
+  CLC neighbors, `ccaa`/sums via `validate_enriched_ccaa`), occurrence
+  contract (`occurrence.py`: `EVERYDAY_FEATURES` allowlist, `CANDIDATE_FEATURES`
+  reintegration candidates, blocked splits, PR-AUC), typology (`typology.py`
+  incl. the elected k12: `fit_k12_typology`/`K12Typology`), reintegration
+  (`reintegration.py`: `fit_background_scorer` — everything fit on positives
+  only, background scored by the fitted objects)
 - `src/wildfire/geo/` — CCAA boundaries (`regions.py`: `load_boundaries` with
   `make_valid`, `assign_ccaa` — `within` join in EPSG:3035 + `sjoin_nearest`
   fallback ≤ `ccaa.nearest_max_distance_m`, keep-first dedupe, `REGION_NAME_MAP`
@@ -76,8 +82,11 @@ excludes it by default. CLI `-m` overrides addopts (last wins).
 pytest -m integration         # only test_openmeteo + test_openmeteo_requests POST test
 ```
 
-The POST integration test writes its response to `tmp_path` (no longer overwrites the
-tracked `data/processed/openmeteo_response.json`). It still spends real quota on a cache miss.
+The POST integration test (`test_fetch_next_batch_fills_partial`) checks the
+resumed CSV only — the HTTP response is **not saved to disk** anymore
+(the `openmeteo_response.json` dump was removed 2026-10-17 as unused; the
+request cache already prevents re-spending quota on retries). It still
+spends real quota on a cache miss.
 
 ### Real data dependencies
 
@@ -91,7 +100,7 @@ Some tests load actual CSVs from disk — they will fail if data files are missi
   (map/boundaries tests) and the **untracked** `data/processed/enriched/firms_spain_weather_clc.csv`
   (real-data smoke test); the budget-mapping test uses the tracked budget CSV above
 - `test_openmeteo_requests.py` (7 unmarked) — 3 need `data/processed/merged/firms_spain_merged.csv`;
-  4 interpolation tests read the **tracked** `data/processed/openmeteo_response.json`
+  the interpolation tests use a synthetic in-memory payload (no JSON on disk since 2026-10-17)
 
 These are **not** marked as integration. If you see failures on a fresh checkout, these are why.
 
@@ -161,3 +170,14 @@ Comments are bilingual ES/EN; cells only orchestrate — acquisition logic >5 li
   with the median (Celda 2.4), so nothing downstream is blocked. Publishing
   with the gap, or backfilling BLH via the batch script (spends real API
   quota), both remain possible but undecided.
+
+- **`background_days.csv` is a RAW artifact** (same units/convention as
+  `firms_spain_final_lags_index.csv`), keyed by `background_id` (integer,
+  unique). Built by `notebooks/02d_background_data.ipynb`, which also writes a
+  descriptive z-scored copy `background_days_normalized.csv` (EDA-only, never
+  an input — the occurrence model fits its scaler per fold). 02d drops the
+  all-null satellite columns and the same-day leakage rows
+  (`drop_leaking_background` with `leakage_max_km`), so the saved file passes
+  `validate_background_days` as-is. The pool (~23.9k) is below
+  `background_ratio: 2` × 23,142, so `sample_background` returns the whole pool
+  (~1.03:1) until more background is generated.

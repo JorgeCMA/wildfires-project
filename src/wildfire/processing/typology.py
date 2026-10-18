@@ -10,6 +10,9 @@ live here, tested.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -17,6 +20,9 @@ from scipy.optimize import linear_sum_assignment
 from sklearn.cluster import KMeans
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 from sklearn.preprocessing import RobustScaler, StandardScaler
+
+if TYPE_CHECKING:
+    from sklearn.mixture import GaussianMixture  # type: ignore[import-untyped]
 
 from wildfire.processing.unsupervised import (
     CLUSTERING_SEED,
@@ -68,7 +74,11 @@ def resample_stability(
     Each resample fits its own scaler (rule 4.3: no scaler reuse); ARI is
     computed on the resampled rows only. Pass bar: mean ARI > 0.7.
     """
-    mat = X.to_numpy(dtype=float) if isinstance(X, pd.DataFrame) else np.asarray(X, dtype=float)
+    mat = (
+        X.to_numpy(dtype=float)
+        if isinstance(X, pd.DataFrame)
+        else np.asarray(X, dtype=float)
+    )
     n = len(mat)
     if n == 0:
         raise ValueError("Empty matrix")
@@ -97,7 +107,8 @@ def _match_profile_corr(a: pd.DataFrame, b: pd.DataFrame) -> float:
     if len(a) != len(b):
         return float("nan")
     cost = np.linalg.norm(
-        a.sort_index().to_numpy()[:, None, :] - b.sort_index().to_numpy()[None, :, :], axis=2
+        a.sort_index().to_numpy()[:, None, :] - b.sort_index().to_numpy()[None, :, :],
+        axis=2,
     )
     rows, cols = linear_sum_assignment(cost)
     matched_a = a.sort_index().to_numpy()[rows].ravel()
@@ -120,10 +131,17 @@ def leave_one_group_out(
     only) where the held-out rows concentrate. A group that vanishes is a
     regional artefact, not a typology (plan §7A).
     """
-    mat = X.to_numpy(dtype=float) if isinstance(X, pd.DataFrame) else np.asarray(X, dtype=float)
+    mat = (
+        X.to_numpy(dtype=float)
+        if isinstance(X, pd.DataFrame)
+        else np.asarray(X, dtype=float)
+    )
     groups = pd.Series(np.asarray(groups)).reset_index(drop=True)
     full_profiles = (
-        pd.DataFrame(mat).assign(grupo=fit_labels(_standardize(mat), k, seed)).groupby("grupo").mean()
+        pd.DataFrame(mat)
+        .assign(grupo=fit_labels(_standardize(mat), k, seed))
+        .groupby("grupo")
+        .mean()
     )
     rows = []
     for grp in sorted(groups.unique().tolist()):
@@ -132,7 +150,9 @@ def leave_one_group_out(
         if len(rest) < k:
             raise ValueError(f"Too few rows outside group {grp!r}")
         scaler = StandardScaler().fit(mat[rest])
-        km = KMeans(n_clusters=k, random_state=seed, n_init=10).fit(scaler.transform(mat[rest]))
+        km = KMeans(n_clusters=k, random_state=seed, n_init=10).fit(
+            scaler.transform(mat[rest])
+        )
         refit_profiles = (
             pd.DataFrame(mat[rest]).assign(grupo=km.labels_).groupby("grupo").mean()
         )
@@ -161,7 +181,11 @@ def cross_year_profiles(
     Returns per-direction group means plus the correlation between the two
     directions' profile tables (high = the same regimes both years).
     """
-    mat = X.to_numpy(dtype=float) if isinstance(X, pd.DataFrame) else np.asarray(X, dtype=float)
+    mat = (
+        X.to_numpy(dtype=float)
+        if isinstance(X, pd.DataFrame)
+        else np.asarray(X, dtype=float)
+    )
     year = pd.Series(np.asarray(year)).reset_index(drop=True)
     years = sorted(year.unique().tolist())
     if len(years) != 2:
@@ -171,9 +195,13 @@ def cross_year_profiles(
         tr = (year == train_y).to_numpy()
         te = (year == test_y).to_numpy()
         scaler = StandardScaler().fit(mat[tr])
-        km = KMeans(n_clusters=k, random_state=seed, n_init=10).fit(scaler.transform(mat[tr]))
+        km = KMeans(n_clusters=k, random_state=seed, n_init=10).fit(
+            scaler.transform(mat[tr])
+        )
         lab = km.predict(scaler.transform(mat[te]))
-        profiles[f"{train_y}->{test_y}"] = pd.DataFrame(mat[te]).assign(grupo=lab).groupby("grupo").mean()
+        profiles[f"{train_y}->{test_y}"] = (
+            pd.DataFrame(mat[te]).assign(grupo=lab).groupby("grupo").mean()
+        )
     keys = sorted(profiles)
     corr = _match_profile_corr(profiles[keys[0]], profiles[keys[1]])
     return {"profiles": profiles, "profile_corr": corr}
@@ -235,17 +263,28 @@ def noncoincidence_ari(
     return out
 
 
-def nontriviality_nmi(candidate: pd.Series | np.ndarray, **partitions: pd.Series | np.ndarray) -> dict:
+def nontriviality_nmi(
+    candidate: pd.Series | np.ndarray, **partitions: pd.Series | np.ndarray
+) -> dict:
     """Normalised MI vs calendar/geography variables (must all be <= 0.5)."""
     cand = np.asarray(candidate)
-    out = {name: float(normalized_mutual_info_score(cand, np.asarray(col))) for name, col in partitions.items()}
+    out = {
+        name: float(normalized_mutual_info_score(cand, np.asarray(col)))
+        for name, col in partitions.items()
+    }
     out["passes"] = bool(all(v <= NMI_TRIVIALITY_MAX for v in out.values()))
     return out
 
 
-def gmm_overlap_mass(proba: pd.DataFrame | np.ndarray, posterior: float = GMM_OVERLAP_POSTERIOR) -> dict:
+def gmm_overlap_mass(
+    proba: pd.DataFrame | np.ndarray, posterior: float = GMM_OVERLAP_POSTERIOR
+) -> dict:
     """Share of rows below a max-posterior cutoff (regime-overlap quantifier)."""
-    mat = proba.to_numpy(dtype=float) if isinstance(proba, pd.DataFrame) else np.asarray(proba, dtype=float)
+    mat = (
+        proba.to_numpy(dtype=float)
+        if isinstance(proba, pd.DataFrame)
+        else np.asarray(proba, dtype=float)
+    )
     if len(mat) == 0:
         raise ValueError("Empty posterior matrix")
     if not np.allclose(mat.sum(axis=1), 1.0, atol=1e-6):
@@ -293,17 +332,120 @@ def validation_verdict(checks_7a: dict[str, bool], checks_7b: dict[str, bool]) -
     return "accepted"
 
 
+#: Elected typology (03e verdict, plan §B.2): k = 12 over the weather-PCA
+#: space of set A (PC1–PC7, ``features_a.csv``).
+K12_ELECTED_K = 12
+
+#: PCA score columns of set A (fixed order; the space the k12 typology lives in).
+K12_PC_COLUMNS: list[str] = [f"PC{i}" for i in range(1, 8)]
+
+
+#: Posterior column naming, consistent with ``cluster_labels.csv``
+#: (``gmm_a_k5_full_p{j}`` -> ``gmm_k12_full_p{j}`` for the elected k12).
+def _posterior_columns(k: int = K12_ELECTED_K) -> list[str]:
+    return [f"gmm_k12_full_p{j}" for j in range(k)]
+
+
+@dataclass
+class K12Typology:
+    """Fitted k12 objects (03e refit policy) for labeling positives AND
+    scoring background rows with the same fitted objects (never refit on
+    background — contract §B.2.2 of plan_supervised_implementation.md).
+
+    Refit policy (mirrors ``notebooks/03e_validacion.ipynb`` cells 3/17):
+    ``StandardScaler`` on the PC1–7 scores, then KMeans hard labels
+    (``n_init=10``) and full-covariance GMM posteriors, seed 42 throughout.
+    """
+
+    scaler: StandardScaler
+    kmeans: KMeans
+    gmm: GaussianMixture
+    pc_columns: list[str]
+
+    def _scaled(self, features: pd.DataFrame) -> np.ndarray:
+        missing = [c for c in self.pc_columns if c not in features.columns]
+        if missing:
+            raise KeyError(f"Missing k12 PC columns: {missing}")
+        pcs = features[self.pc_columns].to_numpy(dtype=float)
+        return self.scaler.transform(pcs)
+
+    def labels_for(self, features: pd.DataFrame) -> pd.DataFrame:
+        """``detection_id``, hard label ``cluster_meteo`` and GMM posteriors.
+
+        Used on the positives frame it reproduces the 03e labels; on a
+        background frame the same fitted objects produce background labels.
+        """
+        from wildfire.processing.unsupervised import ID_COL
+
+        if ID_COL not in features.columns:
+            raise KeyError(f"Missing column: {ID_COL}")
+        scaled = self._scaled(features)
+        proba = self.gmm.predict_proba(scaled)
+        out = pd.DataFrame({ID_COL: features[ID_COL].to_numpy()})
+        out["cluster_meteo"] = self.kmeans.predict(scaled)
+        out[_posterior_columns()] = proba
+        return out
+
+    # Alias documenting the contract use: background is SCORED, never fitted.
+    score_background = labels_for
+
+
+def fit_k12_typology(
+    features: pd.DataFrame,
+    seed: int = CLUSTERING_SEED,
+) -> K12Typology:
+    """Refit the elected k12 typology on a positives features frame.
+
+    Parameters
+    ----------
+    features:
+        Frame with ``detection_id`` + PC1–7 (the schema of
+        ``data/processed/unsupervised/features_a.csv``). Must be positives
+        only: background rows are scored later via
+        :meth:`K12Typology.score_background`, never included in the fit.
+
+    Returns
+    -------
+    K12Typology
+        Fitted scaler + KMeans + full-covariance GMM (k=12, ``seed``).
+    """
+    from sklearn.mixture import GaussianMixture
+
+    from wildfire.processing.unsupervised import ID_COL
+
+    if ID_COL not in features.columns:
+        raise KeyError(f"Missing column: {ID_COL}")
+    missing = [c for c in K12_PC_COLUMNS if c not in features.columns]
+    if missing:
+        raise KeyError(f"Missing k12 PC columns: {missing}")
+    pcs = features[K12_PC_COLUMNS].to_numpy(dtype=float)
+    if not np.isfinite(pcs).all():
+        raise ValueError("k12 PC columns contain NaN/inf: refuse to fit")
+
+    scaler = StandardScaler().fit(pcs)
+    scaled = scaler.transform(pcs)
+    kmeans = KMeans(n_clusters=K12_ELECTED_K, random_state=seed, n_init=10).fit(scaled)
+    gmm = GaussianMixture(
+        n_components=K12_ELECTED_K, covariance_type="full", random_state=seed
+    ).fit(scaled)
+    return K12Typology(scaler=scaler, kmeans=kmeans, gmm=gmm, pc_columns=K12_PC_COLUMNS)
+
+
 __all__ = [
     "GMM_OVERLAP_MAX",
     "GMM_OVERLAP_POSTERIOR",
+    "K12_ELECTED_K",
+    "K12_PC_COLUMNS",
     "NMI_TRIVIALITY_MAX",
     "PREPROCESSING_ARI_MIN",
     "SPATIAL_CORR_MIN",
     "STABILITY_ARI_MIN",
     "STABILITY_FRAC",
     "STABILITY_RESAMPLES",
+    "K12Typology",
     "anchor_min_delta",
     "cross_year_profiles",
+    "fit_k12_typology",
     "fit_labels",
     "gmm_overlap_mass",
     "leave_one_group_out",

@@ -75,12 +75,6 @@ def main() -> None:
         default=None,
         help="Destino de finalize (default: firms_spain_weather.csv)",
     )
-    parser.add_argument(
-        "--save-path",
-        type=Path,
-        default=None,
-        help="Where to dump the last batch JSON response (default: tracked file)",
-    )
     args = parser.parse_args()
 
     csv_path = args.csv_path
@@ -89,7 +83,6 @@ def main() -> None:
         interval_seconds=args.interval,
         **({"csv_path": csv_path} if csv_path is not None else {}),
         **({"input_csv": args.input_csv} if args.input_csv is not None else {}),
-        **({"save_path": args.save_path} if args.save_path is not None else {}),
     )
     print(f"Status: {status.value}")
 
@@ -99,8 +92,11 @@ def main() -> None:
         if csv_path is not None:
             completed = finalize_weather_csv(
                 csv_path,
-                (args.complete_path
-                 if args.complete_path is not None else WEATHER_COMPLETE_CSV),
+                (
+                    args.complete_path
+                    if args.complete_path is not None
+                    else WEATHER_COMPLETE_CSV
+                ),
             )
         else:
             completed = finalize_weather_csv()

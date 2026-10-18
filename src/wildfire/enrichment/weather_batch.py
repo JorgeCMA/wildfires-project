@@ -36,11 +36,6 @@ from wildfire.enrichment.merge_sensors import load_merged
 # vive en configs/project.yaml bajo ``openmeteo.batch_query``.
 ROW_KEYS = ("latitude", "longitude", "start_date", "end_date")
 
-# Dónde se guarda la respuesta HTTP para reutilizarla después
-OUTPUT_JSON = (
-    PROJECT_ROOT / load_config()["output"]["processed"] / "openmeteo_response.json"
-)
-
 # CSV de enriquecimiento parcial: es a la vez entrada (reanudación) y salida.
 # Base = merged (sin CLC): el orden del pipeline es merge -> confianza ->
 # open-meteo -> CLC, así la enriquecidora de CLC se puede repetir sin volver
@@ -382,8 +377,8 @@ def _response_to_record(response, names: list[str], position: int) -> dict:
     Función separada (y no código inline en el bucle) a propósito: las
     variables locales de la ventana (``window_start``/``window_end``) no
     deben sombrear jamás el ``start`` posicional del lote en
-    :func:`fetch_next_batch` (el shadowing rompió el ``json.dumps`` del
-    payload con ``TypeError: Timestamp is not JSON serializable``).
+    :func:`fetch_next_batch` (el shadowing colisionaba con el ``start``
+    del lote y rompía el relleno).
 
     Parameters
     ----------
@@ -584,11 +579,8 @@ def fill_weather(df: pd.DataFrame, start: int, records: list[dict]) -> None:
     df.iloc[start : start + len(records), col_positions] = matrix
 
 
-def fetch_next_batch(
-    save_path: Path | None = OUTPUT_JSON,
-    csv_path: Path | None = PARTIAL_CSV,
-) -> None:
-    """Descarga el siguiente lote, rellena el CSV parcial y guarda la respuesta.
+def fetch_next_batch(csv_path: Path | None = PARTIAL_CSV) -> None:
+    """Descarga el siguiente lote y rellena el CSV parcial.
 
     Flujo de reanudación: carga el CSV de enriquecimiento parcial (si no
     existe, el merged), busca la primera fila sin ``temperature_2m`` y pide
@@ -599,13 +591,11 @@ def fetch_next_batch(
     38 KB y nginx responde ``414 Request-URI Too Large``. Después se
     interpolan las 15 variables horarias a la hora exacta de cada detección
     (``fill_weather``) y se reescribe el CSV completo, así cada lote avanza
-    la reanudación.
+    la reanudación. La respuesta HTTP no se guarda en disco: no se usa para
+    nada (la caché de requests_cache ya evita re-gastar cuota en reintentos).
 
     Parameters
     ----------
-    save_path:
-        Si no es ``None``, guarda la respuesta HTTP como JSON (petición +
-        un registro por ubicación) en esta ruta, sobrescribiéndola.
     csv_path:
         Si no es ``None``, CSV de reanudación: se lee al empezar y se
         reescribe (merged + las filas ya rellenadas) tras cada lote.
@@ -660,26 +650,8 @@ def fetch_next_batch(
     for position, response in enumerate(responses):
         records.append(_response_to_record(response, params["hourly"], position))
 
-    if save_path is not None:
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            # Posición de la primera fila del lote en el CSV: permite saber
-            # a qué filas corresponde esta respuesta aunque avance el resume
-            "row_start": start,
-            "url": url,
-            "params": params,
-            "responses": records,
-        }
-        save_path.write_text(
-            json.dumps(payload, indent=2, allow_nan=False), encoding="utf-8"
-        )
-        print(
-            f"Batch of {len(batch)} rows -> {len(records)} responses "
-            f"saved to {save_path}"
-        )
-
-    # El JSON es la evidencia cruda: si el relleno falla, se re-pide el mismo
-    # lote (cached) en el próximo intento sin perder nada
+    # La caché (requests_cache) retiene la respuesta: si el relleno o el
+    # guardado fallan, el reintento re-pide el mismo lote sin gastar cuota.
     fill_weather(df, start, records)
 
     if csv_path is not None:
@@ -953,7 +925,6 @@ def run_weather_enrichment(
     max_batches: int | None = None,
     interval_seconds: float | None = None,
     csv_path: Path = PARTIAL_CSV,
-    save_path: Path = OUTPUT_JSON,
     input_csv: Path | None = None,
     fetch: Callable[..., None] = fetch_next_batch,
     sleep: Callable[[float], None] = time.sleep,
@@ -994,8 +965,6 @@ def run_weather_enrichment(
         punto de partida (p. ej. el fondo sintético). Sin él, la base es
         ``load_merged()`` (incendios). Nunca sobrescribe un ``csv_path``
         existente.
-    save_path:
-        Dónde volcar la respuesta JSON del último lote (``None`` = no).
     fetch:
         Función a llamar por lote; por defecto :func:`fetch_next_batch`.
         Se inyecta en los tests para simular 429 sin red.
@@ -1042,7 +1011,7 @@ def run_weather_enrichment(
             pace = False
 
         try:
-            fetch(save_path=save_path, csv_path=csv_path)
+            fetch(csv_path=csv_path)
         except OpenMeteoRequestsError as exc:
             kind = classify_rate_limit(exc)
             if kind is None:

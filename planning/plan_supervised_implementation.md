@@ -24,6 +24,9 @@ This document is divided into four development plans, in dependency order:
 - **Plan D — Deployment unit & calibration** (§7b): a parallel, non-blocking track that
   shapes methods-note wording and future work.
 
+**Code-level implementation steps for Plans B–D**: see
+`planning/2026-10-17_supervised-training-implementation.md`.
+
 ## 0. Hard rules (from the plans, non-negotiable)
 
 1. **Splits**: `blocked_splits` only — LeaveOneGroupOut over `season` (YYYY-Qn) and
@@ -113,10 +116,14 @@ with positives in `assemble_modeling_frame` at the intended 1:2 ratio.
 first — all three are preconditions for the ablation:
 
 1. **Persist k12 labels**: `cluster_labels.csv` on disk only has k5. 03e refits
-   GMM k12 inline; extract those labels (+ posteriors) into
+   k12 inline; extract those labels (+ posteriors) into
    `data/processed/unsupervised/cluster_labels_k12.csv` keyed by `detection_id`
-   (small helper cell or script; records the refit policy: full-covariance GMM k=12
-   on StandardScaler(PC1–7), seed 42).
+   (small helper cell or script; records the refit policy — **corrected
+   2026-10-18 against the notebook**: KMeans hard labels on
+   StandardScaler(PC1–7) + full-covariance GMM k=12 posteriors, seed 42;
+   implemented as `fit_k12_typology`/`K12Typology` in
+   `src/wildfire/processing/typology.py`, persisted by
+   `scripts/persist_k12_labels.py`).
 2. **Score background rows with the same fitted objects** (contract §3.2): refit
    scaler+GMM k12 on *positives only*, then `.predict` background PCs →
    `cluster_meteo` for both classes. Policy **[DECIDED]**: refit on positives;

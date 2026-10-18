@@ -212,7 +212,7 @@ def _make_fetch(outcomes: list[BaseException | None]):
     """
     state = {"calls": 0}
 
-    def fake(*, save_path, csv_path):
+    def fake(*, csv_path):
         index = state["calls"]
         state["calls"] += 1
         outcome = outcomes[index] if index < len(outcomes) else None
@@ -228,9 +228,9 @@ def _make_fetch(outcomes: list[BaseException | None]):
 
     fake.calls = 0
 
-    def wrapper(*, save_path, csv_path):
+    def wrapper(*, csv_path):
         fake.calls += 1
-        return fake(save_path=save_path, csv_path=csv_path)
+        return fake(csv_path=csv_path)
 
     wrapper.calls = state  # dict con "calls"; se lee como wrapper.calls["calls"]
     return wrapper
@@ -241,7 +241,6 @@ def _run(tmp_path, csv, outcomes, **kwargs):
     sleeps: list[float] = []
     defaults = {
         "csv_path": csv,
-        "save_path": tmp_path / "response.json",
         "fetch": _make_fetch(outcomes),
         "sleep": sleeps.append,
         "interval_seconds": 0,

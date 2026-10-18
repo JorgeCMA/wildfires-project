@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from wildfire.processing.occurrence import (
+    BACKGROUND_ID_COL,
     EVERYDAY_FEATURES,
     LABEL_COL,
     SATELLITE_BLOCKLIST,
@@ -10,9 +11,13 @@ from wildfire.processing.occurrence import (
     assemble_modeling_frame,
     background_skeleton,
     blocked_splits,
+    drop_leaking_background,
+    load_background_days,
     occurrence_features,
     occurrence_settings,
     rank_metrics,
+    sample_background,
+    validate_background_days,
 )
 
 
@@ -173,3 +178,231 @@ class TestRankMetrics:
     def test_satellite_blocklist_covers_confidence_family(self):
         for col in ("confidence_num", "confidence_cat", "frp", "brightness"):
             assert col in SATELLITE_BLOCKLIST
+
+
+def _make_background(n=30, seed=5, acq_date="2023-06-01", **extra):
+    df = _make_frame(n, seed=seed)
+    df[BACKGROUND_ID_COL] = [f"bg{i:04d}" for i in range(n)]
+    df["acq_date"] = acq_date
+    for key, value in extra.items():
+        df[key] = value
+    return df
+
+
+def _with_coords(df, lat, lon):
+    out = df.copy()
+    out["latitude"] = lat
+    out["longitude"] = lon
+    return out
+
+
+class TestSettingsLeakage:
+    def test_leakage_default(self):
+        assert occurrence_settings()["leakage_max_km"] == 1.0
+
+    def test_invalid_leakage_rejected(self, monkeypatch):
+        import wildfire.processing.occurrence as occ
+
+        monkeypatch.setattr(
+            occ,
+            "load_config",
+            lambda: {
+                "modeling": {
+                    "occurrence": {
+                        "background_ratio": 2,
+                        "random_state": 42,
+                        "cv_groups": ["ccaa"],
+                        "leakage_max_km": -1.0,
+                    }
+                }
+            },
+        )
+        with pytest.raises(ValueError):
+            occ.occurrence_settings()
+
+
+class TestLoadBackgroundDays:
+    def test_missing_key_column_raises(self, tmp_path, monkeypatch):
+        import wildfire.processing.occurrence as occ
+
+        csv = tmp_path / "bg.csv"
+        _make_background(5).drop(columns=[BACKGROUND_ID_COL]).to_csv(csv, index=False)
+        monkeypatch.setattr(
+            occ, "load_config", lambda: {"output": {"background_days": str(csv)}}
+        )
+        with pytest.raises(KeyError):
+            load_background_days()
+
+    def test_explicit_path_loads(self, tmp_path):
+        csv = tmp_path / "bg.csv"
+        _make_background(5).to_csv(csv, index=False)
+        out = load_background_days(csv)
+        assert BACKGROUND_ID_COL in out.columns
+        assert len(out) == 5
+
+    def test_missing_config_key_raises(self, monkeypatch):
+        import wildfire.processing.occurrence as occ
+
+        monkeypatch.setattr(occ, "load_config", lambda: {"output": {}})
+        with pytest.raises(KeyError):
+            load_background_days()
+
+
+class TestValidateBackgroundDays:
+    def _valid(self):
+        background = _with_coords(_make_background(20), 40.0, -4.0)
+        positives = _with_coords(_make_frame(5, seed=1), 0.0, 0.0)
+        positives["acq_date"] = "2023-06-01"
+        return background, positives
+
+    def test_clean_passes_and_reports(self):
+        background, positives = self._valid()
+        report = validate_background_days(background, positives)
+        assert report["n_rows"] == 20
+        assert report["n_duplicate_ids"] == 0
+        assert report["n_leakage"] == 0
+        assert "nan_report" in report
+
+    def test_duplicate_key_raises(self):
+        background, positives = self._valid()
+        background.loc[1, BACKGROUND_ID_COL] = background.loc[0, BACKGROUND_ID_COL]
+        with pytest.raises(ValueError):
+            validate_background_days(background, positives)
+
+    def test_satellite_column_raises(self):
+        background, positives = self._valid()
+        background["brightness"] = 300.0
+        with pytest.raises(ValueError):
+            validate_background_days(background, positives)
+
+    def test_weather_duplicates_allowed(self):
+        background, positives = self._valid()
+        background["rain"] = 0.0
+        background["is_day"] = 1
+        report = validate_background_days(background, positives)
+        assert report["n_rows"] == 20
+
+    def test_type_nonzero_raises(self):
+        background, positives = self._valid()
+        background["type"] = 1
+        with pytest.raises(ValueError):
+            validate_background_days(background, positives)
+
+    def test_type_zero_allowed(self):
+        background, positives = self._valid()
+        background["type"] = 0
+        validate_background_days(background, positives)
+
+    def test_missing_feature_raises(self):
+        background, positives = self._valid()
+        with pytest.raises(KeyError):
+            validate_background_days(
+                background.drop(columns=["temperature_2m"]), positives
+            )
+
+    def test_missing_date_raises(self):
+        background, positives = self._valid()
+        with pytest.raises(KeyError):
+            validate_background_days(background.drop(columns=["acq_date"]), positives)
+
+    def test_same_day_collision_raises(self):
+        background, positives = self._valid()
+        positives = _with_coords(positives, 40.0, -4.0)
+        background = _with_coords(background, 40.0, -4.0)
+        with pytest.raises(ValueError):
+            validate_background_days(background, positives)
+
+    def test_same_day_collision_override(self):
+        background, positives = self._valid()
+        positives = _with_coords(positives, 40.0, -4.0)
+        background = _with_coords(background, 40.0, -4.0)
+        report = validate_background_days(background, positives, allow_leakage=True)
+        assert report["n_leakage"] == len(background)
+
+    def test_nan_coords_do_not_crash(self):
+        background, positives = self._valid()
+        background.loc[0, "latitude"] = np.nan
+        report = validate_background_days(background, positives)
+        assert report["nan_report"]["latitude"] == 1
+
+    def test_different_day_not_leakage(self):
+        background = _with_coords(
+            _make_background(5, acq_date="2023-06-02"), 40.0, -4.0
+        )
+        positives = _with_coords(_make_frame(3, seed=2), 40.0, -4.0)
+        positives["acq_date"] = "2023-06-01"
+        report = validate_background_days(background, positives)
+        assert report["n_leakage"] == 0
+
+
+class TestDropLeakingBackground:
+    def _frames(self):
+        background = _with_coords(_make_background(10), 40.0, -4.0)
+        positives = _with_coords(_make_frame(3, seed=1), 40.0, -4.0)
+        positives["acq_date"] = "2023-06-01"
+        return background, positives
+
+    def test_drops_all_collisions(self):
+        background, positives = self._frames()
+        out = drop_leaking_background(background, positives)
+        assert len(out) == 0
+
+    def test_keeps_far_rows(self):
+        background, positives = self._frames()
+        background.loc[:4, "latitude"] = 50.0
+        out = drop_leaking_background(background, positives)
+        assert len(out) == 5
+
+    def test_resets_index(self):
+        background, positives = self._frames()
+        background.loc[:4, "latitude"] = 50.0
+        out = drop_leaking_background(background, positives)
+        assert list(out.index) == list(range(len(out)))
+
+    def test_noop_when_clean(self):
+        background = _with_coords(
+            _make_background(6, acq_date="2023-06-02"), 40.0, -4.0
+        )
+        positives = _with_coords(_make_frame(3, seed=2), 40.0, -4.0)
+        positives["acq_date"] = "2023-06-01"
+        out = drop_leaking_background(background, positives)
+        assert len(out) == 6
+
+    def test_output_passes_validation(self):
+        background, positives = self._frames()
+        background.loc[:4, "latitude"] = 50.0
+        out = drop_leaking_background(background, positives)
+        report = validate_background_days(out, positives)
+        assert report["n_leakage"] == 0
+
+
+class TestSampleBackground:
+    def test_ratio_count(self):
+        background = _make_background(100)
+        out = sample_background(background, 10, ratio=2, seed=1)
+        assert len(out) == 20
+
+    def test_pool_smaller_returns_all(self):
+        background = _make_background(5)
+        out = sample_background(background, 10, ratio=2, seed=1)
+        assert len(out) == 5
+
+    def test_deterministic(self):
+        background = _make_background(100)
+        first = sample_background(background, 10, ratio=2, seed=7)
+        second = sample_background(background, 10, ratio=2, seed=7)
+        pd.testing.assert_frame_equal(first, second)
+
+    def test_sorted_by_id(self):
+        background = _make_background(50)
+        out = sample_background(background, 5, ratio=2, seed=3)
+        ids = out[BACKGROUND_ID_COL].tolist()
+        assert ids == sorted(ids)
+
+    def test_invalid_ratio_raises(self):
+        with pytest.raises(ValueError):
+            sample_background(_make_background(5), 1, ratio=0, seed=1)
+
+    def test_ratio_none_reads_config(self):
+        out = sample_background(_make_background(100), 10, seed=1)
+        assert len(out) == 20

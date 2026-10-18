@@ -68,6 +68,11 @@ unmapped → budget sums `NaN`; no rows ever dropped.
   Open-Meteo machinery (500-row POST batches, spends real API quota), so keep
   the sample modest (1:1–1:3 vs positives). Unblocks end-to-end
   fire/no-fire risk ranking (PR-AUC, blocked CV by season/CCAA).
+  Built 2026-10-18 by `notebooks/02d_background_data.ipynb` as a RAW,
+  `background_id`-keyed artifact (~23.9k rows; `background_days_normalized.csv`
+  is an EDA-only descriptive copy). 02d drops the all-null satellite columns
+  and the 1 same-day leak, so it passes `validate_background_days` as-is;
+  pool stays below `background_ratio: 2` until more background is generated.
 - ~~Boundaries source decision (open item 2)~~ — resolved 2026-10-02 (team GeoJSON).
 - Git tracking policy for large generated CSVs (open item 3).
 - README drift (open item 4; `build_dataset.py` deleted 2026-10-03 as superseded);

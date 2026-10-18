@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pandas as pd  # type: ignore[import-untyped]
@@ -48,6 +49,28 @@ from wildfire.processing.pca_weather import WIND_DIRECTION_COL, AddWindCircular
 
 LABEL_COL = "label"
 SEASON_COL = "season"
+
+#: Key of the enriched background file (PLAN §A file names). Duplicated from
+#: ``reintegration.BACKGROUND_ID_COL`` on purpose: importing it here would
+#: close an import cycle (``occurrence`` <- ``unsupervised`` <- ``reintegration``).
+BACKGROUND_ID_COL = "background_id"
+
+#: Mean Earth radius (km) for the haversine leakage radius.
+_EARTH_RADIUS_KM = 6371.0088
+
+#: Satellital columns that may legitimately ride along in the background file
+#: because they are *weather* outputs, not satellite measurements:
+#: ``occurrence_features``/``assemble_modeling_frame`` drop ``rain``/``is_day``
+#: downstream, and ``type`` is structural (allowed only when all-zero).
+_BACKGROUND_ALLOWED_LEFTOVERS = frozenset({"rain", "is_day", "type"})
+
+#: Reintegration candidates (PLAN §B.2.4): produced for both classes by
+#: fitted-on-positives objects (``processing/reintegration.py``). They enter
+#: the modeling frame ONLY via the ``candidates`` argument of
+#: ``assemble_modeling_frame`` and are promoted into ``EVERYDAY_FEATURES``
+#: only if the ablation gate passes (mean ΔPR-AUC > 0, PLAN §C.2). Until then
+#: they "exist but are unproven" in the methods note.
+CANDIDATE_FEATURES: list[str] = ["cluster_meteo", "score_anomalia"]
 
 # Everyday (non-satellite) predictors in fixed order: location, date-grain
 # calendar, the 15 weather variables (precipitation, not rain; wd_sin/wd_cos
@@ -142,8 +165,12 @@ def occurrence_settings() -> dict:
     groups = list(settings.get("cv_groups", []))
     if not groups:
         raise ValueError("cv_groups must list at least one blocking variable")
+    leakage = float(settings.get("leakage_max_km", 1.0))
+    if leakage < 0:
+        raise ValueError(f"leakage_max_km must be >= 0, got {leakage!r}")
     settings["background_ratio"] = ratio
     settings["cv_groups"] = groups
+    settings["leakage_max_km"] = leakage
     return settings
 
 
@@ -193,13 +220,55 @@ def add_season(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _candidate_block(
+    pos_candidates: pd.DataFrame | None,
+    neg_candidates: pd.DataFrame | None,
+    n_pos: int,
+    n_neg: int,
+) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
+    """Validate the optional reintegration-candidate frames (PLAN §B.2.4).
+
+    Both frames or neither; identical canonical column order (a subset of
+    ``CANDIDATE_FEATURES``, reindexed to the fixed order); row counts match
+    the positives/background frames; no satellite columns.
+    """
+    if (pos_candidates is None) != (neg_candidates is None):
+        raise ValueError("pos_candidates and neg_candidates must come together")
+    if pos_candidates is None or neg_candidates is None:
+        return pd.DataFrame(index=range(n_pos)), pd.DataFrame(index=range(n_neg)), []
+    cols = list(dict.fromkeys(pos_candidates.columns))
+    ordered = [c for c in CANDIDATE_FEATURES if c in cols]
+    for name, frame, expected in (
+        ("pos_candidates", pos_candidates, n_pos),
+        ("neg_candidates", neg_candidates, n_neg),
+    ):
+        if len(frame) != expected:
+            raise ValueError(f"{name} has {len(frame)} rows, expected {expected}")
+        banned = [c for c in SATELLITE_BLOCKLIST if c in frame.columns]
+        if banned:
+            raise ValueError(f"{name} carries satellite columns: {banned}")
+    unknown = [c for c in cols if c not in CANDIDATE_FEATURES]
+    if unknown:
+        raise ValueError(f"Candidate columns outside CANDIDATE_FEATURES: {unknown}")
+    pos = pos_candidates[ordered].reset_index(drop=True)
+    neg = neg_candidates[ordered].reset_index(drop=True)
+    return pos, neg, ordered
+
+
 def assemble_modeling_frame(
-    positives: pd.DataFrame, background: pd.DataFrame
+    positives: pd.DataFrame,
+    background: pd.DataFrame,
+    *,
+    pos_candidates: pd.DataFrame | None = None,
+    neg_candidates: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Join fire rows (label 1) and background rows (label 0).
 
     Both frames must carry the identical everyday schema; any satellite
-    column in either frame raises ``ValueError``.
+    column in either frame raises ``ValueError``. Reintegration candidates
+    (``cluster_meteo``, ``score_anomalia``) are appended after the everyday
+    block in ``CANDIDATE_FEATURES`` order when both candidate frames are
+    given; they are optional and never mixed into ``EVERYDAY_FEATURES``.
     """
     for name, frame in (("positives", positives), ("background", background)):
         banned = [c for c in SATELLITE_BLOCKLIST if c in frame.columns]
@@ -210,14 +279,213 @@ def assemble_modeling_frame(
     missing = [c for c in EVERYDAY_FEATURES if c not in neg.columns]
     if missing:
         raise KeyError(f"background missing occurrence features: {missing}")
-    pos = pos[EVERYDAY_FEATURES].copy()
+    pos_c, neg_c, candidate_cols = _candidate_block(
+        pos_candidates, neg_candidates, len(pos), len(neg)
+    )
+    pos = pos[EVERYDAY_FEATURES].copy().reset_index(drop=True)
+    neg = neg[EVERYDAY_FEATURES].copy().reset_index(drop=True)
+    if candidate_cols:
+        pos = pd.concat([pos, pos_c], axis=1)
+        neg = pd.concat([neg, neg_c], axis=1)
     pos[LABEL_COL] = 1
-    neg = neg[EVERYDAY_FEATURES].copy()
     neg[LABEL_COL] = 0
     frame = pd.concat([pos, neg], ignore_index=True)
     if frame[LABEL_COL].nunique() != 2:
         raise ValueError("Modeling frame needs both labels (empty input?)")
     return frame
+
+
+def load_background_days(path: str | Path | None = None) -> pd.DataFrame:
+    """Load the enriched background file (key ``background_id``).
+
+    ``path=None`` reads ``output.background_days`` from
+    ``configs/project.yaml``; an explicit path overrides it (tests, reruns).
+    Fails closed if the key column is absent.
+    """
+    # Import diferido: `wildfire.data` carga requests-cache y el cliente
+    # Open-Meteo; el módulo de ocurrencia no debe pagar ese coste al importar.
+    from wildfire.data.io import load_csv
+
+    if path is None:
+        try:
+            path = load_config()["output"]["background_days"]
+        except KeyError as exc:
+            raise KeyError(
+                "Missing 'output.background_days' in configs/project.yaml"
+            ) from exc
+    background = load_csv(path)
+    if BACKGROUND_ID_COL not in background.columns:
+        raise KeyError(
+            f"Background file {path!r} lacks key column {BACKGROUND_ID_COL!r}"
+        )
+    return background
+
+
+def _same_day_collisions(
+    background: pd.DataFrame,
+    positives: pd.DataFrame,
+    leakage_max_km: float,
+) -> np.ndarray:
+    """Boolean mask of background rows within ``leakage_max_km`` of a same-day
+    positive detection (haversine, date-partitioned spatial index).
+    """
+    from sklearn.neighbors import BallTree  # type: ignore[import-untyped]
+
+    required = ("latitude", "longitude", "acq_date")
+    for name, frame in (("background", background), ("positives", positives)):
+        missing = [c for c in required if c not in frame.columns]
+        if missing:
+            raise KeyError(f"{name} missing columns for the leakage check: {missing}")
+
+    pos = positives[list(required)].dropna(subset=["latitude", "longitude"])
+    dates = pd.to_datetime(pos["acq_date"], errors="coerce")
+    keep = dates.notna().to_numpy()
+    coords = np.radians(pos[["latitude", "longitude"]].to_numpy(dtype=float))[keep]
+    day = dates.dt.strftime("%Y-%m-%d").to_numpy()[keep]
+
+    by_day: dict[str, np.ndarray] = {}
+    for d in np.unique(day):
+        by_day[d] = coords[day == d]
+
+    bg = background[list(required)]
+    bg_dates = pd.to_datetime(bg["acq_date"], errors="coerce")
+    bg_coords = np.radians(bg[["latitude", "longitude"]].to_numpy(dtype=float))
+    bg_day = bg_dates.dt.strftime("%Y-%m-%d").to_numpy()
+    # Rows with NaN coordinates/dates are reported by the NaN report and
+    # skipped here instead of crashing the BallTree query.
+    finite = np.isfinite(bg_coords).all(axis=1)
+
+    radius = float(leakage_max_km) / _EARTH_RADIUS_KM
+    hits = np.zeros(len(background), dtype=bool)
+    for d in np.unique(bg_day):
+        day_pos = by_day.get(d)
+        if day_pos is None:
+            continue
+        rows = np.flatnonzero((bg_day == d) & finite)
+        if rows.size == 0:
+            continue
+        tree = BallTree(day_pos, metric="haversine")
+        distance, _ = tree.query(bg_coords[rows], k=1)
+        hits[rows] = distance[:, 0] <= radius
+    return hits
+
+
+def validate_background_days(
+    background: pd.DataFrame,
+    positives: pd.DataFrame,
+    leakage_max_km: float = 1.0,
+    *,
+    allow_leakage: bool = False,
+) -> dict:
+    """Fail-closed contract checks on the enriched background file.
+
+    Verifies the key is unique, the everyday schema is present, no
+    satellite-measured column slipped in (``type`` is allowed only at 0;
+    ``rain``/``is_day`` are weather outputs dropped downstream), and — unless
+    ``allow_leakage`` — that no background row sits within ``leakage_max_km``
+    of a same-day detection.
+
+    Returns
+    -------
+    dict
+        ``n_rows``, ``n_duplicate_ids``, ``n_leakage`` and the per-column
+        ``nan_report`` (only columns with at least one NaN).
+    """
+    if BACKGROUND_ID_COL not in background.columns:
+        raise KeyError(f"Missing key column: {BACKGROUND_ID_COL}")
+    if "acq_date" not in background.columns:
+        raise KeyError("Missing column: acq_date")
+
+    frame = _with_wind_circular(background)
+    missing = [c for c in EVERYDAY_FEATURES if c not in frame.columns]
+    if missing:
+        raise KeyError(f"Background missing occurrence features: {missing}")
+
+    if "type" in background.columns:
+        nonzero = int(
+            (pd.to_numeric(background["type"], errors="coerce").fillna(0) != 0).sum()
+        )
+        if nonzero:
+            raise ValueError(f"Background has {nonzero} rows with type != 0")
+    banned = [
+        c
+        for c in SATELLITE_BLOCKLIST
+        if c in background.columns and c not in _BACKGROUND_ALLOWED_LEFTOVERS
+    ]
+    if banned:
+        raise ValueError(f"Background carries satellite columns: {banned}")
+
+    n_duplicates = int(background[BACKGROUND_ID_COL].duplicated().sum())
+    if n_duplicates:
+        raise ValueError(
+            f"background_id is not unique: {n_duplicates} duplicate row(s)"
+        )
+
+    nan_report = {
+        c: int(background[c].isna().sum())
+        for c in background.columns
+        if background[c].isna().any()
+    }
+
+    hits = _same_day_collisions(background, positives, leakage_max_km)
+    n_leakage = int(hits.sum())
+    if n_leakage and not allow_leakage:
+        raise ValueError(
+            f"{n_leakage} background row(s) within {leakage_max_km} km of a "
+            "same-day detection (label leakage); drop them or pass "
+            "allow_leakage=True"
+        )
+
+    return {
+        "n_rows": len(background),
+        "n_duplicate_ids": n_duplicates,
+        "n_leakage": n_leakage,
+        "nan_report": nan_report,
+    }
+
+
+def drop_leaking_background(
+    background: pd.DataFrame,
+    positives: pd.DataFrame,
+    leakage_max_km: float = 1.0,
+) -> pd.DataFrame:
+    """Return ``background`` without same-day leakage rows.
+
+    Drops every row within ``leakage_max_km`` of a same-day detection — the
+    condition :func:`validate_background_days` rejects on — so the saved
+    artifact passes the contract as-is. The index is reset (positional).
+    """
+    hits = _same_day_collisions(background, positives, leakage_max_km)
+    return background.loc[~hits].reset_index(drop=True)
+
+
+def sample_background(
+    background: pd.DataFrame,
+    n_positives: int,
+    *,
+    ratio: int | None = None,
+    seed: int = 42,
+) -> pd.DataFrame:
+    """Seeded background subsample at ``ratio`` negatives per positive.
+
+    Rows are sorted by ``background_id`` first (reproducible under any input
+    order); when the pool is smaller than ``ratio * n_positives`` the whole
+    pool is returned. ``ratio=None`` reads ``background_ratio`` from config.
+    """
+    if n_positives < 0:
+        raise ValueError(f"n_positives must be >= 0, got {n_positives!r}")
+    if ratio is None:
+        ratio = int(occurrence_settings()["background_ratio"])
+    if ratio < 1:
+        raise ValueError(f"ratio must be >= 1, got {ratio!r}")
+    pool = background.sort_values(BACKGROUND_ID_COL, kind="stable").reset_index(
+        drop=True
+    )
+    target = int(ratio) * int(n_positives)
+    if target >= len(pool):
+        return pool
+    picked = pool.sample(n=target, random_state=seed)
+    return picked.sort_values(BACKGROUND_ID_COL, kind="stable").reset_index(drop=True)
 
 
 def background_skeleton(
