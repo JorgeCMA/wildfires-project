@@ -14,6 +14,11 @@ run is expected for the real demo once the pool is filled.
 python scripts/background_pool_status.py
 ```
 
+The demo app (`pip install -e ".[demo]"` then `streamlit run demo/app.py`) reads
+only the notebook 01/04 artifacts, shows a **PROVISIONAL** badge and reports the
+same numbers in its *Estado* tab; its Plan-C **live** scorer (coordinates +
+Open-Meteo) is phase 2.
+
 | year | positives | needed (ratio 2) | have | achieved |
 |---|---|---|---|---|
 | 2023 | 14,694 | 29,388 | 11,980 | 0.82 |

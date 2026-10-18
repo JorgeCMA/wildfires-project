@@ -28,6 +28,16 @@ from .calibration import (
     prior_correct,
     reliability_curve,
 )
+from .demo_data import (
+    RISK_BAND_COLORS,
+    band_counts,
+    ccaa_base_rate_geojson,
+    load_ccaa_rates,
+    load_detections,
+    load_fold_metrics,
+    load_reliability,
+    load_scores,
+)
 from .deployment import (
     ALL_LABEL,
     RISK_BAND_LABELS,
@@ -49,6 +59,7 @@ from .occurrence_model import (
     fold_scaler_fit,
     model_candidates,
 )
+from .status import format_pool_status, pool_status
 
 __all__ = [
     "ABLATION_SEED",
@@ -61,16 +72,19 @@ __all__ = [
     "DEFAULT_MARGIN",
     "DEFAULT_N_BOOT",
     "EXCEEDANCE_MARGINS_KM",
+    "RISK_BAND_COLORS",
     "RISK_BAND_LABELS",
     "MarginCalibration",
     "ablation_verdict",
     "add_risk_bands",
     "apply_isotonic",
+    "band_counts",
     "bootstrap_mean_ci",
     "calibrate_exceedance",
     "calibration_metrics",
     "categorical_columns",
     "categorical_to_dummies",
+    "ccaa_base_rate_geojson",
     "ccaa_day_fire_rates",
     "continuous_columns",
     "cross_fitted_isotonic",
@@ -80,9 +94,16 @@ __all__ = [
     "fit_isotonic",
     "fold_scaler_apply",
     "fold_scaler_fit",
+    "format_pool_status",
     "join_ccaa_fire_rates",
+    "load_ccaa_rates",
+    "load_detections",
+    "load_fold_metrics",
+    "load_reliability",
+    "load_scores",
     "margin_positive_labels",
     "model_candidates",
+    "pool_status",
     "prior_correct",
     "quantile_bands",
     "reliability_curve",

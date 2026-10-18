@@ -99,9 +99,13 @@ unmapped → budget sums `NaN`; no rows ever dropped.
   `data/processed/predictions/calibration_reliability.csv`, docs in
   `docs/calibration-C.md`). Measured base rates 0.13%/0.50%/1.79% per point-day;
   ECE ≈2.6 pts. Not a point probability; shifts when the pool is frozen.
-- **Offline demo** (backlog, no new deps): static report from A+B — CCAA
-  base-rate choropleth, band distribution, PR curves, fold-audit verdict; extend
-  with C's reliability curves. No live scorer / interactive dashboard planned.
+- **Demo (Streamlit + Folium)** — `demo/app.py`, extra opcional `demo`
+  (`pip install -e ".[demo]"`; `streamlit run demo/app.py`). **Fase 1 HECHA**:
+  mapa de detecciones crudas (clúster/calor; filtros fecha/CCAA), Plan A (tramos
+  relativos), Plan B (tasa base CCAA + coropleta), Plan C (curvas de fiabilidad
+  precalculadas) y panel de estado provisional. **Fase 2 pendiente**: scorer
+  *live* de Plan C (coordenadas + hora + margen → Open-Meteo → bundle
+  persistido por `scripts/fit_occurrence_model.py`).
 - Background pool **incremental fill in progress** (owner: team) toward
   `background_ratio: 2` (≥ 46,284 rows; weather 24,500/100,000 skeleton rows,
   pool ~23.9k). No freeze now: **demo is presented as provisional** and the full

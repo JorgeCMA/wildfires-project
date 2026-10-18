@@ -19,6 +19,11 @@ mypy src/
 
 # Notebook (headless validation/execution; nbformat + nbclient in dev extras)
 python -c "import nbformat; nbformat.validate(nbformat.read('notebooks/01_recopilacion_datos_limpieza.ipynb', as_version=4))"
+
+# Demo (Streamlit + Folium; optional extra). Run from the repo root.
+pip install -e ".[demo]"
+streamlit run demo/app.py
+ruff check demo/                         # app files; also lint demo/ with the rest
 ```
 
 No Makefile, no CI, no pre-commit hooks. Commands above are the entire dev workflow.
@@ -80,7 +85,14 @@ CSV chain under `data/processed/` — every name denotes its contents, each feed
   `cross_fitted_isotonic` day-blocked cross-fit, `exceedance_base_rate`
   model-free background base rate + day-bootstrap CI, `dedupe_events`,
   `calibrate_exceedance`/`exceedance_summary` orchestrator; margins
-  `EXCEEDANCE_MARGINS_KM` = {5,10,20} km)
+  `EXCEEDANCE_MARGINS_KM` = {5,10,20} km), `status.py` (read-only background-pool
+  fill/ratio report — backs `scripts/background_pool_status.py` and the demo),
+  `demo_data.py` (read-only demo loaders: raw detections, per-protocol scores,
+  band counts, CCAA base-rate GeoJSON for the choropleth, reliability/fold tables)
+- `demo/` — Streamlit + Folium viewer (`app.py`; optional `[demo]` extra). Reads
+  the notebook 01/04 artifacts only: raw-detection time map (cluster/heatmap),
+  Plan A bands, Plan B CCAA base-rate choropleth, Plan C reliability curves (the
+  live Open-Meteo point scorer is phase 2) and a provisional-status panel.
 - `src/wildfire/geo/` — CCAA boundaries (`regions.py`: `load_boundaries` with
   `make_valid`, `assign_ccaa` — `within` join in EPSG:3035 + `sjoin_nearest`
   fallback ≤ `ccaa.nearest_max_distance_m`, keep-first dedupe, `REGION_NAME_MAP`

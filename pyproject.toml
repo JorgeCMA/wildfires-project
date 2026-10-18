@@ -33,6 +33,12 @@ dev = [
     "nbformat",
     "nbclient",
 ]
+# Offline demo app (Streamlit + Folium). Install with `pip install -e ".[demo]"`.
+demo = [
+    "streamlit",
+    "folium",
+    "streamlit-folium",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
