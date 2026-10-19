@@ -38,6 +38,10 @@ data/raw/clcplus/**/Orignal_Data_*.zip
 # Data — processed outputs
 !data/processed/*/.gitkeep
 
+# Occurrence-model bundle: reproducible artifact, not versioned.
+# Regenerate with `python scripts/fit_occurrence_model.py`.
+data/processed/models/
+
 # Environment
 .env
 *.log

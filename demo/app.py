@@ -4,7 +4,9 @@ Two halves:
 
 - **Explorar** — raw FIRMS detections over time (date/region filters), no model.
 - **Plan D** — the supervised model's deployment units: A (relative risk bands),
-  B (empirical CCAA-day base rate) and C (wide-margin exceedance calibration).
+  B (empirical CCAA-day base rate) and C (wide-margin exceedance calibration,
+  plus a **live** point scorer: coordinates + date + time → Open-Meteo → the
+  persisted occurrence bundle).
 
 Everything is read from the artifacts notebook 01/04 already wrote; the pool is
 still being filled, so every model-derived number is **provisional**.
@@ -12,6 +14,7 @@ still being filled, so every model-derived number is **provisional**.
 Run from the repository root::
 
     pip install -e ".[demo]"
+    python scripts/fit_occurrence_model.py   # once, for the live Plan-C scorer
     streamlit run demo/app.py
 """
 
@@ -38,7 +41,10 @@ from wildfire.analysis.demo_data import (
     load_reliability,
     load_scores,
 )
+from wildfire.analysis.inference import build_point_features
+from wildfire.analysis.model_bundle import load_bundle, score_point
 from wildfire.analysis.status import format_pool_status, pool_status
+from wildfire.config import load_config
 
 SPAIN_CENTER = [40.2, -3.7]
 SPAIN_ZOOM = 6
@@ -79,6 +85,11 @@ def _choropleth_geojson() -> dict:
 @st.cache_resource(show_spinner=False)
 def _pool_status() -> dict:
     return pool_status()
+
+
+@st.cache_resource(show_spinner="Cargando el modelo de ocurrencia…")
+def _bundle():
+    return load_bundle(load_config()["output"]["model_bundle"])
 
 
 def _safe(loader, *args, **kwargs):
@@ -129,8 +140,9 @@ with st.sidebar:
     selected_ccaa = st.multiselect("Comunidades", ccaa_options, default=[])
     st.divider()
     st.caption(
-        "La pestaña **Plan C (live)** con coordenadas + Open-Meteo llega en la "
-        "fase 2; aquí C muestra las curvas de fiabilidad ya calculadas."
+        "En **Plan C** puedes calcular una probabilidad de excedencia en vivo "
+        "para un punto y una fecha (clima Open-Meteo + bundle ajustado por "
+        "`scripts/fit_occurrence_model.py`)."
     )
 
 # --- Tabs ------------------------------------------------------------------
@@ -226,12 +238,12 @@ with tab_b:
         display["fire_rate"] = (display["fire_rate"] * 100).round(2)
         st.dataframe(display, width="stretch", hide_index=True)
 
-# 4) Plan C — exceedance calibration (precomputed curves) ------------------
+# 4) Plan C — exceedance calibration (curves + live point scorer) -----------
 with tab_c:
     st.subheader("Plan C — calibración de excedencia (margen ancho)")
     st.caption(
         "PROVISIONAL. P(≥1 detección a ≤ R km ese día); isotónica + corrección "
-        "de prior. La versión *live* (coordenadas + Open-Meteo) llega en la fase 2."
+        "de prior entrenadas en 2023 y calibradas en 2024."
     )
     rel = _safe(_reliability)
     if rel is not None:
@@ -252,6 +264,73 @@ with tab_c:
         st.pyplot(fig)
         plt.close(fig)
         st.dataframe(rel, width="stretch", hide_index=True)
+
+    st.divider()
+    st.subheader("Scorer en vivo — un punto, una fecha")
+    st.caption(
+        "Introduce coordenadas, fecha y hora: se descarga el clima de Open-Meteo, "
+        "se rellena CLC/CCAA/presupuestos y se puntúa con el bundle persistido. "
+        "Mismo espacio de features que el entrenamiento (notebook 01b)."
+    )
+    with st.form("live_point"):
+        col1, col2, col3 = st.columns(3)
+        lat = col1.number_input(
+            "Latitud", value=40.4168, min_value=27.0, max_value=44.5
+        )
+        lon = col2.number_input(
+            "Longitud", value=-3.7038, min_value=-18.5, max_value=4.5
+        )
+        day = col3.date_input(
+            "Fecha",
+            value=pd.Timestamp("2024-07-15").date(),
+            min_value=pd.Timestamp("2020-01-01").date(),
+            max_value=pd.Timestamp("2025-12-31").date(),
+        )
+        col4, col5 = st.columns(2)
+        hour = col4.slider("Hora (UTC)", 0, 23, 12)
+        margin = col5.selectbox("Margen", [5.0, 10.0, 20.0], index=1)
+        submitted = st.form_submit_button("Calcular excedencia")
+
+    if submitted:
+        try:
+            bundle = _bundle()
+        except FileNotFoundError as exc:
+            st.error(f"{exc}")
+        else:
+            try:
+                with st.spinner("Descargando clima y calculando features…"):
+                    features = build_point_features(lat, lon, day, hour)
+                    result = score_point(bundle, features)
+            except Exception as exc:  # noqa: BLE001 — surface any failure to the user
+                st.error(f"No se pudo puntuar el punto: {exc}")
+            else:
+                exceedance = result["exceedance"]
+                prob = exceedance[float(margin)]
+                st.metric(
+                    f"P(≥1 detección a ≤ {margin:g} km ese día)",
+                    f"{prob * 100:.3f} %",
+                )
+                st.caption(f"Score bruto del modelo: {result['score']:.4f}")
+                st.dataframe(
+                    pd.DataFrame(
+                        {
+                            "margen_km": list(exceedance),
+                            "probabilidad": [
+                                round(value * 100, 4) for value in exceedance.values()
+                            ],
+                        }
+                    ),
+                    width="stretch",
+                    hide_index=True,
+                )
+                point_map = folium.Map(location=[lat, lon], zoom_start=10)
+                folium.Marker(
+                    [lat, lon],
+                    tooltip=f"{lat:.4f}, {lon:.4f} — {day} {hour:02d}:00 UTC",
+                ).add_to(point_map)
+                st_folium(
+                    point_map, height=360, use_container_width=True, returned_objects=[]
+                )
 
 # 5) Status / provisionality -----------------------------------------------
 with tab_status:

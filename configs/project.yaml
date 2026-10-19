@@ -158,6 +158,11 @@ output:
   # por margen (km), observado vs predicho + métricas. Escrito por el nb 04.
   # Exceedance-calibration reliability curves (Plan D, route C), by margin.
   calibration_reliability: data/processed/predictions/calibration_reliability.csv
+  # Bundle del modelo de ocurrencia persistido (joblib) para el scorer puntual
+  # del demo (Plan C en vivo): preprocessing + estimador + calibradores de
+  # excedencia. Lo escribe scripts/fit_occurrence_model.py; no está versionado.
+  # Persisted occurrence-model bundle (joblib) for the demo's live point scorer.
+  model_bundle: data/processed/models/occurrence_bundle.joblib
 
 paths:
   notebooks: notebooks

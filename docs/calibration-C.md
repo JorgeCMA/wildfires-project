@@ -66,6 +66,41 @@ Reading:
 `bin_lower, bin_upper, mean_predicted, observed_freq, n, margin_km` — the
 reliability curves behind the plot in notebook section 8.
 
+## Inference bundle — `scripts/fit_occurrence_model.py`
+
+The demo's **live Plan-C scorer** needs the calibration at request time, so the
+notebook's route-C split is reproduced by a script and persisted:
+
+```bash
+python scripts/fit_occurrence_model.py            # --model / --output optional
+```
+
+It refits the same 2023-train / 2024-calibrate pipeline and dumps one joblib
+bundle to `output.model_bundle`
+(`data/processed/models/occurrence_bundle.joblib`, **gitignored** — a
+reproducible artifact). The bundle holds:
+
+- `preprocessing` — one-hot columns, median imputations, `StandardScaler` and
+  the exact training column order (`analysis/model_bundle.py`, mirrors the
+  notebook's per-fold `prepare_fold`).
+- `model` — the **2023-trained** estimator, the exact model the calibrators
+  were fit on (route C uses the same split), so a live probability stays
+  coherent with its calibration.
+- `margins` — per-margin isotonic calibrator + source/target prevalences for
+  `prior_correct`.
+- `metadata` — model name, years, row counts, ratio, seed, the per-margin
+  summary and a timestamp.
+
+Live scoring path (`analysis/inference.py`): one point → `fetch_weather`
+(Open-Meteo archive, 15 vars) → `interpolate_hourly_fields` →
+`enrich_with_clc` → `assign_ccaa` → `add_ccaa_budget_sums` →
+`add_engineered_features` → the model's `EVERYDAY_FEATURES` contract. These are
+the *production* building blocks, so a live point lands in the same feature
+space as the training frame (notebook 01b's formulas are shared via
+`processing/feature_engineering.py`).
+`score_point` returns the raw score plus the calibrated exceedance per margin;
+the demo renders it in the Plan-C tab.
+
 ## Reproduce
 
 ```bash
@@ -87,5 +122,8 @@ pytest tests/test_calibration.py
   measured base rate, not a census.
 - **Not a point probability.** It is honest only at wide area margins; do not
   read it as "P(this spot burns)".
-- **No live scorer / persisted model.** These are historical artifacts; the
-  production deliverable is still the **ranking** (`occurrence_scores.csv`, A+B).
+- **Live scorer is experimental too.** `scripts/fit_occurrence_model.py` +
+  `analysis/model_bundle.py` + `analysis/inference.py` make the probability
+  available for an arbitrary point/date (demo Plan C), but they inherit every
+  caveat above: the ranking stays the production deliverable
+  (`occurrence_scores.csv`, A+B).

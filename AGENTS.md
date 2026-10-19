@@ -22,6 +22,7 @@ python -c "import nbformat; nbformat.validate(nbformat.read('notebooks/01_recopi
 
 # Demo (Streamlit + Folium; optional extra). Run from the repo root.
 pip install -e ".[demo]"
+python scripts/fit_occurrence_model.py   # once: writes the live Plan-C bundle
 streamlit run demo/app.py
 ruff check demo/                         # app files; also lint demo/ with the rest
 ```
@@ -70,7 +71,11 @@ CSV chain under `data/processed/` — every name denotes its contents, each feed
   incl. the elected k12: `fit_k12_typology`/`K12Typology`), reintegration
   (`reintegration.py`: `fit_background_scorer` — everything fit on positives
   only, background scored by the fitted objects; `score(..., include_posteriors=)`
-  returns the 12 k12 GMM posteriors for the alternative encoding)
+  returns the 12 k12 GMM posteriors for the alternative encoding),
+  `feature_engineering.py` (**ported notebook-01b formulas** shared by batch and
+  inference: `SUP_FORESTAL_HA`, `CCAA_HOLIDAY_CODES`, `add_calendar_features`,
+  `add_anthropogenic_features`, `add_cyclic_features`, `add_budget_features`,
+  `add_meteo_indices`, `add_engineered_features`)
 - `src/wildfire/analysis/` — supervised modeling units called by notebook 04
   (the experiment loop lives in the notebook): `occurrence_model.py` (model
   candidates incl. class-balanced variants, per-fold scaler, fold-fit one-hot,
@@ -85,14 +90,25 @@ CSV chain under `data/processed/` — every name denotes its contents, each feed
   `cross_fitted_isotonic` day-blocked cross-fit, `exceedance_base_rate`
   model-free background base rate + day-bootstrap CI, `dedupe_events`,
   `calibrate_exceedance`/`exceedance_summary` orchestrator; margins
-  `EXCEEDANCE_MARGINS_KM` = {5,10,20} km), `status.py` (read-only background-pool
+  `EXCEEDANCE_MARGINS_KM` = {5,10,20} km), `model_bundle.py` (Plan-D route C
+  deployment bundle: `fit_preprocessing`/`transform` mirror the notebook's
+  `prepare_fold`, `OccurrenceBundle` = estimator + preprocessing + per-margin
+  `MarginCalibrator` + metadata; `save_bundle`/`load_bundle` joblib,
+  `predict_score`/`calibrated_exceedance`/`score_point`), `inference.py`
+  (**live point scorer** for the demo: `build_point_features(lat, lon, date,
+  hour)` chains `fetch_weather` → `interpolate_hourly_fields` → `enrich_with_clc`
+  → `assign_ccaa` → `add_ccaa_budget_sums` → `add_engineered_features` →
+  `occurrence_features`), `status.py` (read-only background-pool
   fill/ratio report — backs `scripts/background_pool_status.py` and the demo),
   `demo_data.py` (read-only demo loaders: raw detections, per-protocol scores,
   band counts, CCAA base-rate GeoJSON for the choropleth, reliability/fold tables)
 - `demo/` — Streamlit + Folium viewer (`app.py`; optional `[demo]` extra). Reads
-  the notebook 01/04 artifacts only: raw-detection time map (cluster/heatmap),
-  Plan A bands, Plan B CCAA base-rate choropleth, Plan C reliability curves (the
-  live Open-Meteo point scorer is phase 2) and a provisional-status panel.
+  the notebook 01/04 artifacts: raw-detection time map (cluster/heatmap), Plan A
+  bands, Plan B CCAA base-rate choropleth, Plan C reliability curves **and a live
+  point scorer** (coordinates + date + hour → `analysis/inference.py` → Open-Meteo
+  → the persisted `output.model_bundle` → calibrated exceedance) and a
+  provisional-status panel. The bundle is written by `scripts/fit_occurrence_model.py`
+  and gitignored (`data/processed/models/`).
 - `src/wildfire/geo/` — CCAA boundaries (`regions.py`: `load_boundaries` with
   `make_valid`, `assign_ccaa` — `within` join in EPSG:3035 + `sjoin_nearest`
   fallback ≤ `ccaa.nearest_max_distance_m`, keep-first dedupe, `REGION_NAME_MAP`
