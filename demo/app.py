@@ -49,6 +49,11 @@ from wildfire.config import load_config
 SPAIN_CENTER = [40.2, -3.7]
 SPAIN_ZOOM = 6
 
+#: Punto del scorer en vivo (Plan C): zoom inicial y límites editables/clic.
+POINT_ZOOM = 6
+LAT_BOUNDS = (27.0, 44.5)
+LON_BOUNDS = (-18.5, 4.5)
+
 st.set_page_config(page_title="Wildfire risk — demo", layout="wide")
 
 
@@ -268,17 +273,65 @@ with tab_c:
     st.divider()
     st.subheader("Scorer en vivo — un punto, una fecha")
     st.caption(
-        "Introduce coordenadas, fecha y hora: se descarga el clima de Open-Meteo, "
-        "se rellena CLC/CCAA/presupuestos y se puntúa con el bundle persistido. "
-        "Mismo espacio de features que el entrenamiento (notebook 01b)."
+        "Haz clic en el mapa para fijar el punto, o escribe las coordenadas, la "
+        "fecha y la hora: se descarga el clima de Open-Meteo, se rellena "
+        "CLC/CCAA/presupuestos y se puntúa con el bundle persistido. Mismo espacio "
+        "de features que el entrenamiento (notebook 01b)."
     )
+
+    # Punto activo: persiste entre reruns y lo mueve el clic en el mapa.
+    if "pc_lat" not in st.session_state:
+        st.session_state.pc_lat = 40.4168
+    if "pc_lon" not in st.session_state:
+        st.session_state.pc_lon = -3.7038
+
+    picker = folium.Map(
+        location=[st.session_state.pc_lat, st.session_state.pc_lon],
+        zoom_start=POINT_ZOOM,
+        tiles="OpenStreetMap",
+    )
+    folium.Marker(
+        [st.session_state.pc_lat, st.session_state.pc_lon],
+        tooltip=f"{st.session_state.pc_lat:.4f}, {st.session_state.pc_lon:.4f}",
+    ).add_to(picker)
+    clicked = st_folium(
+        picker,
+        height=580,
+        use_container_width=True,
+        returned_objects=["last_clicked"],
+        key="pc_picker",
+    )
+    hit = (clicked or {}).get("last_clicked")
+    if hit:
+        clicked_at = (round(float(hit["lat"]), 4), round(float(hit["lng"]), 4))
+        # El componente devuelve el mismo clic en cada rerun: aplícalo una vez.
+        if clicked_at != st.session_state.get("pc_last_click"):
+            st.session_state.pc_last_click = clicked_at
+            st.session_state.pc_lat = min(
+                max(clicked_at[0], LAT_BOUNDS[0]), LAT_BOUNDS[1]
+            )
+            st.session_state.pc_lon = min(
+                max(clicked_at[1], LON_BOUNDS[0]), LON_BOUNDS[1]
+            )
+            st.rerun()
+
     with st.form("live_point"):
         col1, col2, col3 = st.columns(3)
         lat = col1.number_input(
-            "Latitud", value=40.4168, min_value=27.0, max_value=44.5
+            "Latitud",
+            min_value=LAT_BOUNDS[0],
+            max_value=LAT_BOUNDS[1],
+            step=0.0001,
+            format="%.4f",
+            key="pc_lat",
         )
         lon = col2.number_input(
-            "Longitud", value=-3.7038, min_value=-18.5, max_value=4.5
+            "Longitud",
+            min_value=LON_BOUNDS[0],
+            max_value=LON_BOUNDS[1],
+            step=0.0001,
+            format="%.4f",
+            key="pc_lon",
         )
         day = col3.date_input(
             "Fecha",
@@ -322,14 +375,6 @@ with tab_c:
                     ),
                     width="stretch",
                     hide_index=True,
-                )
-                point_map = folium.Map(location=[lat, lon], zoom_start=10)
-                folium.Marker(
-                    [lat, lon],
-                    tooltip=f"{lat:.4f}, {lon:.4f} — {day} {hour:02d}:00 UTC",
-                ).add_to(point_map)
-                st_folium(
-                    point_map, height=360, use_container_width=True, returned_objects=[]
                 )
 
 # 5) Status / provisionality -----------------------------------------------

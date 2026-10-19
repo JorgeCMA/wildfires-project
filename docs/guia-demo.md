@@ -218,12 +218,20 @@ Dos secciones apiladas.
 
 ### 6b. `Scorer en vivo — un punto, una fecha` (la única acción en vivo)
 
+**Mapa selector (clic).** Lo primero es un mapa Folium con un marcador en el punto
+activo: al **hacer clic** en cualquier parte del mapa, esa coordenada pasa a los
+campos `Latitud`/`Longitud` (redondeada a **4 decimales** y recortada a los límites
+27–44,5° N / 18,5° O–4,5° E). El punto se guarda en `st.session_state`
+(`pc_lat`/`pc_lon`) y es el que comparten el mapa y el formulario; también puedes
+escribir las coordenadas a mano. El mapa usa `returned_objects=["last_clicked"]`
+(solo devuelve el clic, así no provoca reruns al hacer zoom o desplazar).
+
 Formulario con:
 
 | Control | Por defecto | Significado |
 |---|---|---|
-| `Latitud` | 40.4168 | latitud del punto (WGS84) |
-| `Longitud` | -3.7038 | longitud del punto |
+| `Latitud` | 40.4168 | latitud del punto (WGS84), 4 decimales |
+| `Longitud` | -3.7038 | longitud del punto, 4 decimales |
 | `Fecha` | 2024‑07‑15 | día (rango 2020‑01‑01 → 2025‑12‑31) |
 | `Hora (UTC)` | 12 | slider 0–23, se usa para interpolar el clima horario |
 | `Margen` | 10 | 5/10/20 km — qué margen destaca la métrica principal |
@@ -241,14 +249,12 @@ Al pulsarlo:
    gasta cuota de API** (una petición por pulsación).
 3. `score_point(...)` produce el score bruto + la excedencia calibrada por margen.
 
-Salidas mostradas:
+Salidas mostradas (el punto sigue marcado en el mapa de arriba):
 
 - Una **métrica**: `P(≥1 detección a ≤ R km ese día)` para el margen elegido, en %.
 - Un `caption` con el **score bruto del modelo**.
 - Una **tabla de 3 filas** (`margen_km`, `probabilidad` %) para ver los tres
   márgenes, no solo el elegido.
-- Un **mapa Folium** pequeño con un marcador en el punto (tooltip = coordenadas +
-  fecha/hora).
 
 Cualquier fallo (red, tile CLC ausente, contrato de features) se captura y se
 muestra como mensaje rojo en lugar de tumbar la app.
@@ -370,7 +376,8 @@ La curva que ves (`mean_predicted` vs `observed_freq`) evalúa las predicciones
 - Al pulsar **`Calcular excedencia`** no se ajusta nada: `build_point_features`
   (Open‑Meteo → interpolación horaria → CLC → CCAA → presupuestos → ingeniería)
   → `transform` → `predict_proba` → isotónica → corrección de prior. Solo se gasta
-  **una petición HTTP** por pulsación.
+  **una petición HTTP** por pulsación. El punto sale del mapa selector (clic) o de
+  los campos `Latitud`/`Longitud` (comparten `st.session_state`).
 - `st.cache_resource` mantiene el bundle en memoria: pulsar otra vez **no
   reentrena**; solo recalcula features e inferencia.
 - Para regenerarlo: `python scripts/fit_occurrence_model.py` (artefacto

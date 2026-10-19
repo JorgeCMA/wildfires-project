@@ -41,8 +41,9 @@ If one is missing the app shows which artifact is absent instead of crashing.
 2. **Plan A — tramos** — relative risk-band distribution for a chosen protocol.
 3. **Plan B — tasa base** — empirical `P(≥1 detection | CCAA, day)` choropleth.
 4. **Plan C — excedencia** — reliability curves per margin (5/10/20 km) **and**
-   the live scorer: coordinates + date + hour → Open-Meteo → bundled model →
-   calibrated `P(≥1 detection within R km that day)`.
+   the live scorer: a clickable map to pick the point (a click fills the lat/lon
+   inputs), plus date + hour → Open-Meteo → bundled model → calibrated
+   `P(≥1 detection within R km that day)`.
 5. **Estado** — background-pool fill progress + provisional caveats.
 
 Guía completa en español de cada pestaña y control: `docs/guia-demo.md`.
