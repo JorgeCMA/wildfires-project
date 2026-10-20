@@ -54,6 +54,21 @@ POINT_ZOOM = 6
 LAT_BOUNDS = (27.0, 44.5)
 LON_BOUNDS = (-18.5, 4.5)
 
+#: Marcador del explorador en modo clúster: llama de fuego en lugar del
+#: glyphicon "home" que `FastMarkerCluster` usa por defecto (icon: 'home').
+#: Folium envuelve el callback como `var callback = {callback};`, así que aquí
+#: va SOLO la expresión función (si se incluye `var callback = ...` el script
+#: resultante es un SyntaxError y el mapa no se dibuja).
+FIRE_MARKER_CALLBACK = """
+    function (row) {
+        return L.marker(L.latLng(row[0], row[1]), {
+            icon: L.AwesomeMarkers.icon({
+                prefix: 'fa', icon: 'fire', markerColor: 'red',
+            }),
+        });
+    }
+"""
+
 st.set_page_config(page_title="Wildfire risk — demo", layout="wide")
 
 
@@ -184,7 +199,7 @@ with tab_map:
         if mode == "Mapa de calor":
             HeatMap(points, radius=6, blur=8).add_to(fmap)
         else:
-            FastMarkerCluster(points).add_to(fmap)
+            FastMarkerCluster(points, callback=FIRE_MARKER_CALLBACK).add_to(fmap)
         st_folium(fmap, height=580, use_container_width=True, returned_objects=[])
 
         monthly = (

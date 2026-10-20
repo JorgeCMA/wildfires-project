@@ -86,9 +86,16 @@ no afecta a B/C.
 Objetivo: *dónde y cuándo hubo detecciones*, sin modelo.
 
 - Aplica los filtros de fecha y CCAA de la barra lateral y muestra:
-  - **Radio `Capa`** — `Clúster` (Folium `FastMarkerCluster`: los puntos se
-    agrupan al hacer zoom) o `Mapa de calor` (Folium `HeatMap`, radio 6, blur 8).
-    Los mismos puntos, dos renderizados.
+  - **Radio `Capa`** — `Clúster` o `Mapa de calor`. Los mismos puntos, dos
+    renderizados:
+    - `Clúster` (`FastMarkerCluster`): los puntos se agrupan en burbujas con
+      recuento y, al acercarte, cada detección se dibuja como una **llama de
+      fuego** (Font Awesome `fa-fire` sobre marcador rojo). Es un `callback`
+      propio: el marcador por defecto de Folium es una casita
+      `glyphicon-home`. El callback debe ser la *expresión* de la función
+      (Folium lo envuelve en `var callback = …;`); incluir `var callback =`
+      dentro del string rompe el script del mapa.
+    - `Mapa de calor` (`HeatMap`, radio 6, blur 8): solo el gradiente, sin iconos.
   - Un `caption`: *"N detecciones mostradas."* (el recuento filtrado).
   - Un **mapa Folium** sobre España (tiles OpenStreetMap, zoom 6).
   - Debajo, un **gráfico de barras mensual** (`st.bar_chart`) de detecciones por
