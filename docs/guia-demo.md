@@ -388,7 +388,7 @@ La curva que ves (`mean_predicted` vs `observed_freq`) evalúa las predicciones
 - `st.cache_resource` mantiene el bundle en memoria: pulsar otra vez **no
   reentrena**; solo recalcula features e inferencia.
 - Para regenerarlo: `python scripts/fit_occurrence_model.py` (artefacto
-  reproducible y *gitignored*).
+  versionado y reproducible).
 
 ### 8.5. Estado — lectura de resultados ya calculados
 

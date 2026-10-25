@@ -62,4 +62,4 @@ tab; its Plan-C **live** scorer (coordinates + Open-Meteo) is phase 2.
 2. `notebooks/02d_background_data.ipynb` → `background_days.csv`.
 3. `python scripts/background_pool_status.py` → `READY`.
 4. `notebooks/04_aprendizaje_supervisado.ipynb` and `pytest -m experiment -s`.
-5. `python scripts/fit_occurrence_model.py` (demo bundle, gitignored).
+5. `python scripts/fit_occurrence_model.py` (demo bundle, versioned).

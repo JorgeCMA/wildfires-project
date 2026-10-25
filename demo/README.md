@@ -29,7 +29,7 @@ the matching notebook):
 | `data/raw/ccaa/spain-communities.geojson` | team-provided |
 
 The **live Plan-C scorer** additionally needs the persisted bundle
-`data/processed/models/occurrence_bundle.joblib` (gitignored, reproducible),
+`data/processed/models/occurrence_bundle.joblib` (versioned and reproducible),
 written by `scripts/fit_occurrence_model.py` (see `docs/calibration-C.md`).
 
 If one is missing the app shows which artifact is absent instead of crashing.

@@ -35,12 +35,8 @@ Thumbs.db
 # Only ignore the original download zip (too large for git)
 data/raw/clcplus/**/Orignal_Data_*.zip
 
-# Data — processed outputs
+# Data - processed outputs
 !data/processed/*/.gitkeep
-
-# Occurrence-model bundle: reproducible artifact, not versioned.
-# Regenerate with `python scripts/fit_occurrence_model.py`.
-data/processed/models/
 
 # Environment
 .env

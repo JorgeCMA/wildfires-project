@@ -77,7 +77,7 @@ python scripts/fit_occurrence_model.py            # --model / --output optional
 
 It refits the same 2023-train / 2024-calibrate pipeline and dumps one joblib
 bundle to `output.model_bundle`
-(`data/processed/models/occurrence_bundle.joblib`, **gitignored** — a
+(`data/processed/models/occurrence_bundle.joblib`, **versioned** — a
 reproducible artifact). The bundle holds:
 
 - `preprocessing` — one-hot columns, median imputations, `StandardScaler` and

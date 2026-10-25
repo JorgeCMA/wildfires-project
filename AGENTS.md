@@ -108,7 +108,7 @@ CSV chain under `data/processed/` — every name denotes its contents, each feed
   point scorer** (coordinates + date + hour → `analysis/inference.py` → Open-Meteo
   → the persisted `output.model_bundle` → calibrated exceedance) and a
   status panel. The bundle is written by `scripts/fit_occurrence_model.py`
-  and gitignored (`data/processed/models/`).
+  and versioned at `data/processed/models/occurrence_bundle.joblib`.
 - `src/wildfire/geo/` — CCAA boundaries (`regions.py`: `load_boundaries` with
   `make_valid`, `assign_ccaa` — `within` join in EPSG:3035 + `sjoin_nearest`
   fallback ≤ `ccaa.nearest_max_distance_m`, keep-first dedupe, `REGION_NAME_MAP`

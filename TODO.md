@@ -108,7 +108,7 @@ unmapped → budget sums `NaN`; no rows ever dropped.
   fecha + hora + margen → Open-Meteo con `analysis/inference.py` → bundle
   persistido → excedencia calibrada). El bundle lo escribe
   `scripts/fit_occurrence_model.py` en `output.model_bundle`
-  (`data/processed/models/occurrence_bundle.joblib`, **gitignored**); el
+  (`data/processed/models/occurrence_bundle.joblib`, **versioned**); el
   preprocesado/estimador/calibradores viven en `analysis/model_bundle.py`.
 - Background pool **complete and frozen** (2026-10-25): 97,630 rows (2023:
   48,622; 2024: 49,008) vs the ratio-2 target of 46,284 — every year above

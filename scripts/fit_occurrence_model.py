@@ -13,7 +13,7 @@ split), so a live probability stays coherent with its calibration.
     python scripts/fit_occurrence_model.py
     python scripts/fit_occurrence_model.py --model random_forest --output path.joblib
 
-The bundle is not versioned (it is a reproducible artifact): rerun this script
+The bundle is versioned (one ~400 KB joblib) and reproducible: rerun this script
 after changing the config or the training data.
 """
 
