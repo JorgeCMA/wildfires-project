@@ -1,4 +1,4 @@
-"""Wildfire occurrence — Streamlit + Folium demo (PLAN §Plan D, provisional).
+"""Wildfire occurrence — Streamlit + Folium demo (PLAN §Plan D).
 
 Two halves:
 
@@ -8,8 +8,9 @@ Two halves:
   plus a **live** point scorer: coordinates + date + time → Open-Meteo → the
   persisted occurrence bundle).
 
-Everything is read from the artifacts notebook 01/04 already wrote; the pool is
-still being filled, so every model-derived number is **provisional**.
+Everything is read from the artifacts notebook 01/04 already wrote; the
+background pool was frozen on 2026-10-25 (97,630 negatives, ratio ≥ 2), so the
+model-derived numbers are final for that snapshot.
 
 Run from the repository root::
 
@@ -134,11 +135,13 @@ def _band_bar(counts: pd.Series) -> None:
     plt.close(fig)
 
 
-st.title("Wildfire occurrence — demo (provisional)")
-st.warning(
-    "**Demo provisional.** El fondo (negativos) aún se está rellenando "
-    f"({_pool_status()['pool_rows']:,} filas): todas las cifras derivadas del "
-    "modelo pueden cambiar. Ver la pestaña *Estado*."
+st.title("Wildfire occurrence — demo (Plan D)")
+_st = _pool_status()
+st.success(
+    "**Fondo de negativos completo.** "
+    f"{_st['pool_rows']:,} filas de fondo (ratio objetivo ≥ {_st['ratio']}): "
+    "cifras del modelo calculadas sobre el pool congelado el 25-10-2026. "
+    "Ver la pestaña *Estado*."
 )
 
 # --- Sidebar ---------------------------------------------------------------
@@ -262,8 +265,9 @@ with tab_b:
 with tab_c:
     st.subheader("Plan C — calibración de excedencia (margen ancho)")
     st.caption(
-        "PROVISIONAL. P(≥1 detección a ≤ R km ese día); isotónica + corrección "
-        "de prior entrenadas en 2023 y calibradas en 2024."
+        "P(≥1 detección a ≤ R km ese día) — probabilidad de **margen ancho**, no "
+        "puntual; isotónica + corrección de prior entrenadas en 2023 y "
+        "calibradas en 2024."
     )
     rel = _safe(_reliability)
     if rel is not None:
@@ -392,17 +396,17 @@ with tab_c:
                     hide_index=True,
                 )
 
-# 5) Status / provisionality -----------------------------------------------
+# 5) Status -----------------------------------------------------------------
 with tab_status:
-    st.subheader("Estado del fondo y notas de provisionalidad")
+    st.subheader("Estado del fondo y notas de uso")
     st.code(format_pool_status(_pool_status()), language="text")
     st.markdown(
         "- El **mapa** usa solo detecciones crudas: no es el modelo.\n"
         "- Los tramos (A) son **relativos** y la probabilidad de excedencia (C) "
-        "es **provisional y de margen ancho**.\n"
+        "es de **margen ancho**, no una probabilidad puntual.\n"
         "- El PR-AUC está inflado por el enmarcado ~1:2: es un ranking, no "
         "precisión de campo.\n"
-        "- Documento completo: `docs/provisional-status.md`."
+        "- Documento completo: `docs/background-pool-status.md`."
     )
     fold = _safe(_fold_metrics)
     if fold is not None:

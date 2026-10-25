@@ -44,12 +44,18 @@ If one is missing the app shows which artifact is absent instead of crashing.
    the live scorer: a clickable map to pick the point (a click fills the lat/lon
    inputs), plus date + hour → Open-Meteo → bundled model → calibrated
    `P(≥1 detection within R km that day)`.
-5. **Estado** — background-pool fill progress + provisional caveats.
+5. **Estado** — background-pool status + usage caveats.
 
 Guía completa en español de cada pestaña y control: `docs/guia-demo.md`.
 
-## Provisionality
+## Background pool
 
-The background pool is still being filled, so every model-derived number is
-**provisional** (see `docs/provisional-status.md`). Check progress with
-`python scripts/background_pool_status.py`.
+The negatives pool is **complete and frozen** (2026-10-25): 97,630 usable rows,
+every year above the configured `background_ratio: 2` (2023: 3.31×, 2024:
+5.80×). Model-derived numbers are final for that snapshot. Check the live number
+with `python scripts/background_pool_status.py`; details in
+`docs/background-pool-status.md`.
+
+Caveats that are not about pool size: the model is a **ranking** (not a point
+probability), the route-C exceedance probability is a wide-margin approximation
+(5/10/20 km), and PR-AUC is inflated by the ~1:2 framing.

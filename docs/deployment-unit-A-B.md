@@ -146,12 +146,12 @@ pytest tests/test_deployment.py
 
 - **No probability.** Bands are relative; `ccaa_fire_rate` is a regional base
   rate, not `P(fire at this point)`.
-- **Provisional pool.** The background pool is below `background_ratio: 2`, so
-  every downstream number (including these) can shift when the pool grows.
+- **Frozen pool.** The background pool is complete and frozen (2026-10-25;
+  ratio ≥ 2 per year), so these numbers are final for that snapshot.
 - **Base rate is coarse.** Region × day only; it ignores the day's conditions and
   the exact location.
-- **Offline only.** These are historical artifacts; there is no live scorer and
-  no persisted model yet.
+- **Offline only.** These are historical artifacts; the live scorer lives in the
+  demo (`demo/app.py` + `analysis/model_bundle.py`).
 
 ## Backlog
 

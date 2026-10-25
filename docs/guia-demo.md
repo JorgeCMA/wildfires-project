@@ -10,7 +10,7 @@ Explicación completa de qué hace la demo, qué muestra cada pestaña, cada sel
   .\.venv\Scripts\python.exe -m streamlit run demo/app.py
   ```
 
-- Documentos relacionados: `demo/README.md`, `docs/deployment-unit-A-B.md`, `docs/calibration-C.md`, `docs/provisional-status.md`.
+- Documentos relacionados: `demo/README.md`, `docs/deployment-unit-A-B.md`, `docs/calibration-C.md`, `docs/background-pool-status.md`.
 
 ---
 
@@ -20,17 +20,16 @@ La demo es **de solo lectura salvo por una acción**. Cuatro de las cinco pesta�
 se limitan a mostrar artefactos ya escritos (CSV/GeoJSON) por los notebooks 01/04
 y por `scripts/fit_occurrence_model.py`; lo único que calcula algo al pulsar un
 botón es el **scorer en vivo de Plan C**. Nada de lo que hay en el mapa es salida
-del modelo: el mapa muestra **dónde ardieron de verdad** (detecciones FIRMS). Todas
-las cifras derivadas del modelo (tramos, tasas base, probabilidades de excedencia)
-llevan la advertencia **provisional**, porque el fondo (negativos) todavía se está
-rellenando.
+del modelo: el mapa muestra **dónde ardieron de verdad** (detecciones FIRMS). Las
+cifras derivadas del modelo (tramos, tasas base, probabilidades de excedencia)
+están calculadas sobre el **pool de fondo completo** (congelado el 2026‑10‑25).
 
 ### Artefactos que lee
 
 | Artefacto | Alimenta |
 |---|---|
 | `expanded/firms_spain_final_lags_index.csv` (23.142 detecciones, 2023‑01‑01 → 2024‑12‑31, 17 CCAA) | Opciones de fecha/CCAA de la barra lateral, **Explorar mapa** |
-| `predictions/occurrence_scores.csv` (94.074 filas = 2 protocolos × 47.037) | **Plan A** |
+| `predictions/occurrence_scores.csv` (138.852 filas = 2 protocolos × 69.426) | **Plan A** |
 | `predictions/ccaa_day_fire_rates.csv` (17 CCAA + `ALL`) | **Plan B** (tabla + coropleta) |
 | `raw/ccaa/spain-communities.geojson` | Geometría de Plan B |
 | `predictions/calibration_reliability.csv` (3 márgenes × 10 bins) | Curvas de **Plan C** |
@@ -45,11 +44,11 @@ en lugar de un traceback.
 
 ## 1. Estructura de la página
 
-- **Título**: *"Wildfire occurrence — demo (provisional)"*.
-- **Banner de aviso** (siempre visible): *"Demo provisional. El fondo (negativos)
-  aún se está rellenando (N filas)…"*. La `N` sale en vivo de
-  `pool_status()['pool_rows']` (hoy ~23.895). Es el descargo permanente de que las
-  cifras del modelo pueden cambiar.
+- **Título**: *"Wildfire occurrence — demo (Plan D)"*.
+- **Banner** (siempre visible): *"Fondo de negativos completo. N filas de fondo
+  (ratio objetivo ≥ 2)…"*. La `N` sale en vivo de
+  `pool_status()['pool_rows']` (hoy 97.630) y el pool está congelado desde el
+  2026‑10‑25.
 - **Layout**: ancho (`layout="wide"`), barra lateral a la izquierda y 5 pestañas
   arriba.
 
@@ -63,7 +62,7 @@ Hay cuatro controles y cada uno afecta a una **pestaña concreta**:
    Elige qué protocolo de validación bloqueada (*leave-one-group-out*) se muestra
    en **Plan A**. Los dos protocolos son particiones por trimestre-año vs. por
    comunidad; como las puntuaciones de pliegues distintos no comparten escala, los
-   tramos se calculan *dentro* de cada protocolo. Hoy: 47.037 filas puntuadas por
+   tramos se calculan *dentro* de cada protocolo. Hoy: 69.426 filas puntuadas por
    protocolo.
 
 2. **`Mapa (detecciones)` → `Rango de fechas`** — rango de fechas (por defecto el
@@ -114,10 +113,9 @@ Objetivo: el **ranking** del modelo, troceado en tramos de triaje relativos.
   puntuado**, no una escala absoluta de peligro; modelo base: logístico.
 - **Gráfico de barras** `Distribución por tramo (relativo)`: recuento de filas
   puntuadas por tramo, coloreado de verde a rojo con `RISK_BAND_COLORS`. Como los
-  tramos son **quintiles por protocolo**, con 47.037 filas las barras salen
-  ~iguales por construcción (~9.407 cada una: Muy bajo 9.407, Bajo 9.407, Medio
-  9.408, Alto 9.407, Muy alto 9.408). El gráfico sobre todo confirma el troceado,
-  no la habilidad.
+  tramos son **quintiles por protocolo**, con 69.426 filas las barras salen
+  ~iguales por construcción (13.885 en cuatro tramos y 13.886 en *Muy alto*). El
+  gráfico sobre todo confirma el troceado, no la habilidad.
 - **Tabla** `score_medio` por CCAA: puntuación media por región, descendente. Aquí
   es donde Plan A dice algo útil: qué regiones rankean más alto **bajo el
   protocolo actual**.
@@ -127,7 +125,7 @@ risk_percentile, ccaa, ccaa_fire_rate`.
 
 ### 4.1. Qué cambia al pasar de `season` a `ccaa`
 
-Las dos opciones usan **las mismas 47.037 filas puntuadas y las mismas columnas**;
+Las dos opciones usan **las mismas 69.426 filas puntuadas y las mismas columnas**;
 lo único que cambia son las predicciones *out-of-fold* según **cómo se bloquea la
 validación**:
 
@@ -154,11 +152,11 @@ fuera de pliegue). Consecuencias al pulsar uno u otro:
 
 1. **El gráfico de barras (`Distribución por tramo`) NO cambia.** Los tramos son
    quintiles calculados *dentro* de cada protocolo sobre el mismo número de filas,
-   así que los recuentos son idénticos en los dos: Muy bajo 9.407, Bajo 9.407,
-   Medio 9.408, Alto 9.407, Muy alto 9.408. El gráfico no distingue protocolos.
+   así que los recuentos son idénticos en los dos: Muy bajo 13.885, Bajo 13.885,
+   Medio 13.885, Alto 13.885, Muy alto 13.886. El gráfico no distingue protocolos.
 
 2. **La escala de las puntuaciones sí se desplaza.** El score medio pasa de
-   ≈ 0,44 (`season`) a ≈ 0,53 (`ccaa`); el rango va de ~0 a ~0,999 en ambos.
+   ≈ 0,30 (`season`) a ≈ 0,39 (`ccaa`); el rango va de ~0 a ~0,999 en ambos.
    No es un cambio de calidad, es el efecto de bloquear por región.
 
 3. **La tabla `score_medio` es lo que cambia de verdad**: cambian los valores por
@@ -220,8 +218,9 @@ Dos secciones apiladas.
   Datos = `calibration_reliability.csv` (10 bins por cuantiles × 3 márgenes).
 - **Tabla** de esas mismas 30 filas: `bin_lower, bin_upper, mean_predicted,
   observed_freq, n, margin_km`.
-- El `caption` la marca **PROVISIONAL**: calibración isotónica entrenada en 2023,
-  calibrada en 2024, corregida por la tasa base medida.
+- El `caption` recuerda que es una probabilidad de **margen ancho** (no puntual):
+  calibración isotónica entrenada en 2023, calibrada en 2024, corregida por la
+  tasa base medida.
 
 ### 6b. `Scorer en vivo — un punto, una fecha` (la única acción en vivo)
 
@@ -268,7 +267,7 @@ muestra como mensaje rojo en lugar de tumbar la app.
 
 ---
 
-## 7. **Estado** — panel de provisionalidad
+## 7. **Estado** — panel del fondo
 
 Tres elementos:
 
@@ -276,12 +275,13 @@ Tres elementos:
    relleno del parcial de clima (`with weather` / `fully complete` / `resume row`),
    el recuento de filas del pool enriquecido, una tabla por año
    (`positives / needed / have / ratio`) y una línea **VERDICT** — hoy
-   `PROVISIONAL - pool short of the ratio target…`. Responde a "¿ya está congelado
-   el pool?" (objetivo = `background_ratio: 2` negativos por positivo **por año**).
+   `READY - every year reaches the ratio target; pool complete (frozen 2026-10-25)`.
+   Responde a "¿ya está congelado el pool?" (objetivo = `background_ratio: 2`
+   negativos por positivo **por año**).
 2. Una **lista de advertencias** en markdown: el mapa son detecciones crudas, no el
-   modelo; los tramos son relativos; la excedencia es provisional y de margen
-   ancho; el PR‑AUC está inflado por el enmarcado ~1:2 (es un ranking, no precisión
-   de campo); enlace a `docs/provisional-status.md`.
+   modelo; los tramos son relativos; la excedencia es de margen ancho (no puntual);
+   el PR‑AUC está inflado por el enmarcado ~1:2 (es un ranking, no precisión de
+   campo); enlace a `docs/background-pool-status.md`.
 3. Una **tabla de métricas por pliegue** (`occurrence_fold_metrics.csv`, 125 filas):
    `protocol, held_out, n_train, n_test, prevalence, pr_auc, roc_auc, model`.
    Contiene los 5 modelos candidatos (`logistic`, `logistic_balanced`,
@@ -291,12 +291,12 @@ Tres elementos:
 
    **Cómo leerla**: `held_out` es el grupo **excluido del entrenamiento** (el test)
    y `n_test` es su tamaño; `n_train` es **todo lo demás** del marco de modelado
-   (47.037 filas = 23.142 detecciones + 23.895 de fondo), por eso sale ~40k en
-   todos los pliegues. Para ver cuánto dato aporta cada season/CCAA hay que mirar
-   **`n_test`** (321–8.568), no `n_train`. Siempre `n_train + n_test = 47.037`, y
-   cada `held_out` aparece **5 veces** (una por modelo candidato). `prevalence` es
-   la mezcla de etiquetas del pliegue de test en el marco **muestreado** (~1:1), no
-   la tasa real de fuego.
+   (69.426 filas = 23.142 detecciones + 46.284 de fondo, ratio 2), por eso sale
+   ~58k–69k en todos los pliegues. Para ver cuánto dato aporta cada season/CCAA hay
+   que mirar **`n_test`** (495–11.368), no `n_train`. Siempre
+   `n_train + n_test = 69.426`, y cada `held_out` aparece **5 veces** (una por
+   modelo candidato). `prevalence` es la mezcla de etiquetas del pliegue de test en
+   el marco **muestreado** (~1:2), no la tasa real de fuego.
 
 ---
 
@@ -331,7 +331,7 @@ artefactos y, como mucho, **aplica** un modelo ya entrenado.
 - **Sin calibración**: son puntuaciones de *ranking*, no probabilidades (su nivel
   lo fija el muestreo de fondo ~1:2).
 - **Tramos**: `add_risk_bands(..., group_col="protocol", n_bands=5)` calcula
-  quintiles **por protocolo** sobre las 47.037 filas puntuadas (positivos **y**
+  quintiles **por protocolo** sobre las 69.426 filas puntuadas (positivos **y**
   fondo muestreado, no solo las 23.142 detecciones). Por eso los recuentos son
   casi idénticos entre protocolos y el gráfico de barras apenas informa.
 - **La app**: `load_scores(protocol)` + `band_counts` + media por CCAA. No ajusta
@@ -352,24 +352,24 @@ Sí hay entrenamiento aguas arriba: **dos ajustes** sobre una **partición tempo
 única** (no CV del estimador), más una corrección de prior:
 
 1. **Modelo** — `HistGradientBoostingClassifier(random_state=42)` (hiperparámetros
-   por defecto de scikit-learn), ajustado **una vez** sobre 2023: 26.674 filas =
-   14.694 positivos + 11.980 de fondo (el pool de 2023 no llega al ratio 2, así que
-   se usa entero).
+   por defecto de scikit-learn), ajustado **una vez** sobre 2023: 44.082 filas =
+   14.694 positivos + 29.388 de fondo (ratio 2).
 2. **Calibrador isotónico por margen** — para cada `R ∈ {5, 10, 20}` km se etiqueta
    `y = 1` si la fila de validación tiene una detección a ≤ R km **el mismo día**
    (una detección está a 0 km de sí misma, así que las filas positivas salen
    siempre `y = 1`; el margen separa sobre todo las filas de fondo), y
    se ajusta `IsotonicRegression(out_of_bounds="clip", y_min=0, y_max=1)` sobre
-   2024 (20.363 filas = 8.448 positivos + 11.915 de fondo).
+   2024 (25.344 filas = 8.448 positivos + 16.896 de fondo).
    - **Cross-fit**: los días únicos se reparten en 5 bloques; la probabilidad de
      cada bloque sale de una isotónica ajustada con los otros 4. Así las curvas de
      fiabilidad son **out-of-fold** (no se puntúan con su propio ajuste).
    - El **calibrador de despliegue** (el que guarda el bundle) se reajusta con
      **todo 2024**.
 3. **Corrección de prior** — `prior_correct` reescala las odds desde la prevalencia
-   de la muestra de 2024 (≈41,6 / 41,8 / 42,6 %) a la **tasa base medida en el
-   pool de fondo**: 0,13 / 0,50 / 1,79 % para 5/10/20 km. La media de las
-   probabilidades corregidas es ≈0,25 / 0,96 / 3,30 %; Brier ≈0,16 y ECE ≈0,026.
+   de la muestra de 2024 (≈33,4 / 33,6 / 34,5 %) a la **tasa base medida en el
+   pool de fondo**: 0,123 / 0,464 / 1,710 % para 5/10/20 km. La media de las
+   probabilidades corregidas es ≈0,23 / 0,85 / 3,00 %; Brier ≈0,15 y
+   ECE ≈0,023–0,027.
 
 La curva que ves (`mean_predicted` vs `observed_freq`) evalúa las predicciones
 **cross-fitted**, no el calibrador final; y la app solo lee el CSV de 30 filas.
@@ -424,8 +424,9 @@ Ninguna pestaña usa un split aleatorio.
 - **Probabilidad de excedencia** — `P(≥1 detección a ≤ R km ese día)` calibrada;
   solo tiene sentido a márgenes anchos (5/10/20 km); isotónica + corrección de
   prior.
-- **Pool / provisional** — el pool de negativos está por debajo del objetivo, así
-  que los scores y las cifras de calibración pueden cambiar.
+- **Pool** — el pool de negativos está **completo y congelado** (2026‑10‑25,
+  97.630 filas, ratio ≥ 2 en ambos años), así que los scores y las cifras de
+  calibración son finales para esa instantánea.
 
 ---
 
@@ -434,8 +435,9 @@ Ninguna pestaña usa un split aleatorio.
 - No es una probabilidad de fuego a nivel de punto (solo excedencia de margen ancho).
 - No es un pronóstico: el scorer en vivo descarga clima **histórico** para la fecha
   elegida; "en vivo" significa calculado a petición, no predicción futura.
-- No está congelada: toda cifra derivada del modelo es provisional por decisión del
-  equipo.
+- No está congelada a nivel de **método**: la excedencia es una aproximación de
+  margen ancho y el modelo es un ranking. El **pool de fondo sí está congelado**
+  (25‑10‑2026), así que las cifras actuales son finales para esa instantánea.
 
 ---
 
@@ -448,4 +450,5 @@ Ninguna pestaña usa un split aleatorio.
 5. **Plan C**: mira las curvas de fiabilidad y luego introduce un punto/fecha/hora y
    pulsa **Calcular excedencia** para obtener la excedencia calibrada en los tres
    márgenes (gasta una petición a Open-Meteo).
-6. **Estado**: confirma que sigue en PROVISIONAL e inspecciona el PR‑AUC por pliegue.
+6. **Estado**: confirma el `VERDICT: READY` (pool congelado) e inspecciona el
+   PR‑AUC por pliegue.

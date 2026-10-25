@@ -1,7 +1,7 @@
-"""Read-only status of the supervised background pool (demo provisionality).
+"""Read-only status of the supervised background pool.
 
 Thin CLI over :func:`wildfire.analysis.status.pool_status`: reports how far the
-slow background-weather fill has advanced and whether the pool reaches
+background-weather fill has advanced and whether the pool reaches
 ``background_ratio`` negatives per positive per year. Never spends Open-Meteo
 quota nor writes a CSV.
 

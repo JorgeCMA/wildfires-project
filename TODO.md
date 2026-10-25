@@ -68,11 +68,11 @@ unmapped → budget sums `NaN`; no rows ever dropped.
   Open-Meteo machinery (500-row POST batches, spends real API quota), so keep
   the sample modest (1:1–1:3 vs positives). Unblocks end-to-end
   fire/no-fire risk ranking (PR-AUC, blocked CV by season/CCAA).
-  Built 2026-10-18 by `notebooks/02d_background_data.ipynb` as a RAW,
-  `background_id`-keyed artifact (~23.9k rows; `background_days_normalized.csv`
-  is an EDA-only descriptive copy). 02d drops the all-null satellite columns
-  and the 1 same-day leak, so it passes `validate_background_days` as-is;
-  pool stays below `background_ratio: 2` until more background is generated.
+  Built by `notebooks/02d_background_data.ipynb` as a RAW, `background_id`-keyed
+  artifact (97,630 rows; `background_days_normalized.csv` is an EDA-only
+  descriptive copy). 02d drops the all-null satellite columns and the same-day
+  leaks, so it passes `validate_background_days` as-is. Pool **complete and
+  frozen** 2026-10-25 (2023: 3.31×, 2024: 5.80× the ratio-2 target).
 - ~~PCA provenance: verify `fit_weather_pca` reproduces the `features_a.csv`/
   03b space~~ — resolved 2026-10-18: `tests/test_pca_weather.py::
   TestAgainstRealFeaturesA` shows the refit reproduces PC1–7 exactly
@@ -81,8 +81,8 @@ unmapped → budget sums `NaN`; no rows ever dropped.
 - Supervised occurrence model (block 04) phase 2 (2026-10-18): 5 model
   candidates (balanced variants), `score(..., include_posteriors=True)` for the
   12-posterior encoding, and `analysis/deployment.py::ccaa_day_fire_rates`
-  (empirical Plan-D base rate). Ablation verdicts stay provisional until the
-  background pool reaches `background_ratio: 2`. Plan:
+  (empirical Plan-D base rate). Ablation verdicts are computed on the frozen
+  pool (candidate set not promoted). Plan:
   `planning/2026-10-18_supervised-training-phase2.md`.
 - Supervised deployment unit — Plan D (2026-10-18): **A + B done** — relative
   `risk_band`/`risk_percentile` (5 Spanish quintiles, per protocol) and the
@@ -90,32 +90,33 @@ unmapped → budget sums `NaN`; no rows ever dropped.
   `ccaa_fire_rate` in `occurrence_scores.csv` (all in notebook 04 /
   `analysis/deployment.py`; docs in `docs/deployment-unit-A-B.md`). The
   `season/2024-Q1` anomaly is audited in nb04 section 6 (genuinely separable;
-  control PR-AUC 0.45). Still [OPEN]: the offline **demo** (below) and freezing
-  the background pool. Point-level calibration not recommended.
+  control PR-AUC 0.45). Demo done (below); background pool frozen 2026-10-25.
+  Point-level calibration not recommended.
 - **C — calibrated exceedance probability** (2026-10-18, PROVISIONAL): P(≥1
   detection ≤ R km that day), train 2023 → calibrate 2024, isotonic +
   prior-correction to the measured base rate, cross-fitted reliability, margins
   R∈{5,10,20} km (`analysis/calibration.py`, nb04 section 8,
   `data/processed/predictions/calibration_reliability.csv`, docs in
-  `docs/calibration-C.md`). Measured base rates 0.13%/0.50%/1.79% per point-day;
-  ECE ≈2.6 pts. Not a point probability; shifts when the pool is frozen.
+  `docs/calibration-C.md`). Measured base rates 0.123%/0.464%/1.710% per
+  point-day; ECE ≈2.3–2.7 pts. Not a point probability; the figures are final
+  for the 2026-10-25 frozen pool but remain a wide-margin approximation.
 - **Demo (Streamlit + Folium)** — `demo/app.py`, extra opcional `demo`
   (`pip install -e ".[demo]"`; `streamlit run demo/app.py`). **Fases 1 y 2 HECHAS**:
   mapa de detecciones crudas (clúster/calor; filtros fecha/CCAA), Plan A (tramos
   relativos), Plan B (tasa base CCAA + coropleta), Plan C (curvas de fiabilidad)
-  y panel de estado provisional; **scorer *live* de Plan C** (coordenadas +
+  y panel de estado del fondo; **scorer *live* de Plan C** (coordenadas +
   fecha + hora + margen → Open-Meteo con `analysis/inference.py` → bundle
   persistido → excedencia calibrada). El bundle lo escribe
   `scripts/fit_occurrence_model.py` en `output.model_bundle`
   (`data/processed/models/occurrence_bundle.joblib`, **gitignored**); el
   preprocesado/estimador/calibradores viven en `analysis/model_bundle.py`.
-- Background pool **incremental fill in progress** (owner: team) toward
-  `background_ratio: 2` (≥ 46,284 rows; weather 24,500/100,000 skeleton rows,
-  pool ~23.9k). No freeze now: **demo is presented as provisional** and the full
-  pool is expected for the real demo. Monitor with
-  `python scripts/background_pool_status.py`; runbook + caveat sheet in
-  `docs/provisional-status.md`. Until filled every ablation/calibration number
-  is provisional (`sample_background` uses the whole pool).
+- Background pool **complete and frozen** (2026-10-25): 97,630 rows (2023:
+  48,622; 2024: 49,008) vs the ratio-2 target of 46,284 — every year above
+  target (3.31× / 5.80×), so `sample_background` draws the full 46,284. Weather
+  filled 100,000/100,000; nb04 + experiments + bundle re-run on the frozen pool
+  (HGB mean PR-AUC 0.7760 / ROC 0.8908; candidate set not promoted).
+  Monitor with `python scripts/background_pool_status.py`; runbook + caveats in
+  `docs/background-pool-status.md`.
 - ~~Boundaries source decision (open item 2)~~ — resolved 2026-10-02 (team GeoJSON).
 - Git tracking policy for large generated CSVs (open item 3).
 - README drift (open item 4; `build_dataset.py` deleted 2026-10-03 as superseded);

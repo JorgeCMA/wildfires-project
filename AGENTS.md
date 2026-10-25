@@ -107,7 +107,7 @@ CSV chain under `data/processed/` — every name denotes its contents, each feed
   bands, Plan B CCAA base-rate choropleth, Plan C reliability curves **and a live
   point scorer** (coordinates + date + hour → `analysis/inference.py` → Open-Meteo
   → the persisted `output.model_bundle` → calibrated exceedance) and a
-  provisional-status panel. The bundle is written by `scripts/fit_occurrence_model.py`
+  status panel. The bundle is written by `scripts/fit_occurrence_model.py`
   and gitignored (`data/processed/models/`).
 - `src/wildfire/geo/` — CCAA boundaries (`regions.py`: `load_boundaries` with
   `make_valid`, `assign_ccaa` — `within` join in EPSG:3035 + `sjoin_nearest`
@@ -254,13 +254,11 @@ prerequisite background artifact is built by `notebooks/02d_background_data.ipyn
   an input — the occurrence model fits its scaler per fold). 02d drops the
   all-null satellite columns and the same-day leakage rows
   (`drop_leaking_background` with `leakage_max_km`), so the saved file passes
-  `validate_background_days` as-is. The pool (~23.9k) is below
-  `background_ratio: 2` × 23,142, so `sample_background` returns the whole pool
-  (~1.03:1) until more background is generated. The pool is being filled
-  **incrementally** (weather 24,500/100,000 skeleton rows): check with
-  `python scripts/background_pool_status.py` (read-only), runbook + demo caveat
-  sheet in `docs/provisional-status.md`. Not frozen — the **demo is presented
-  as provisional**; all model-derived numbers shift when it fills.
+  `validate_background_days` as-is. The pool is **complete and frozen**
+  (2026-10-25): 97,630 rows (2023: 48,622; 2024: 49,008), every year above
+  `background_ratio: 2` (3.31× / 5.80×), so `sample_background` draws the full
+  ratio (46,284). Check with `python scripts/background_pool_status.py`
+  (read-only); runbook + caveats in `docs/background-pool-status.md`.
 
 - **Occurrence model (block 04, phase 2)**: PCA provenance verified 2026-10-18 —
   `fit_weather_pca` reproduces `features_a.csv` PC1–7 (max |diff| ~1e-15, k=7,
@@ -268,7 +266,8 @@ prerequisite background artifact is built by `notebooks/02d_background_data.ipyn
   so `BackgroundScorer` refitting on positives stays in the persisted typology's
   space. `model_candidates` now returns 5 estimators (three families + balanced
   variants); `BackgroundScorer.score(..., include_posteriors=True)` exposes the 12
-  k12 GMM posteriors (via `CANDIDATE_POSTERIOR_FEATURES`). Ablation verdicts stay
-  **provisional** until the pool is frozen (`background_ratio: 2`);
+  k12 GMM posteriors (via `CANDIDATE_POSTERIOR_FEATURES`). Ablation verdicts are
+  computed on the frozen pool (2026-10-25; `background_ratio: 2`); the candidate
+  set is not promoted (Δ +0.0073, CI95% includes 0);
   `analysis/deployment.py::ccaa_day_fire_rates` reports the empirical Plan-D base
   rate alongside the ranking. See `planning/2026-10-18_supervised-training-phase2.md`.

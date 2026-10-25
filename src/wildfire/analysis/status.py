@@ -1,10 +1,11 @@
-"""Read-only status of the supervised background pool (demo provisionality).
+"""Read-only status of the supervised background pool (demo status panel).
 
 The occurrence model's negatives live in ``background_days.csv`` and are grown
 from the synthetic weather partial by ``notebooks/02d_background_data.ipynb``.
-Until the pool reaches ``background_ratio`` negatives per positive **per year**,
-every model-derived number (PR-AUC/ablation, route-C calibration rates) is
-provisional.
+The pool reached ``background_ratio`` negatives per positive **per year** on
+2026-10-25 (97,630 rows); the verdict below still flags a short pool, which
+would make the model-derived numbers (PR-AUC/ablation, route-C calibration
+rates) provisional again.
 
 This module never spends Open-Meteo quota nor writes a CSV; it only reports.
 It backs ``scripts/background_pool_status.py`` and the demo's status panel.
@@ -114,12 +115,13 @@ def format_pool_status(status: dict) -> str:
     lines.append("")
     if status["ready"]:
         lines.append(
-            "VERDICT: READY - every year reaches the ratio target; safe to freeze."
+            "VERDICT: READY - every year reaches the ratio target; "
+            "pool complete (frozen 2026-10-25)."
         )
     else:
         lines.append(
-            "VERDICT: PROVISIONAL - pool short of the ratio target; "
-            "fill weather + rebuild 02d (demo must state this)."
+            "VERDICT: SHORT - pool short of the ratio target; "
+            "fill weather + rebuild 02d (model numbers stay provisional)."
         )
     return "\n".join(lines)
 
