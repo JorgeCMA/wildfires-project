@@ -108,7 +108,12 @@ CSV chain under `data/processed/` — every name denotes its contents, each feed
   point scorer** (coordinates + date + hour → `analysis/inference.py` → Open-Meteo
   → the persisted `output.model_bundle` → calibrated exceedance) and a
   status panel. The bundle is written by `scripts/fit_occurrence_model.py`
-  and versioned at `data/processed/models/occurrence_bundle.joblib`.
+  and versioned at `data/processed/models/occurrence_bundle.joblib`. Five tabs
+  between the fixed header (logo/title/description) and the content; each tab
+  holds its own controls (Explore filters in the detections tab, protocol in
+  the risk-bands tab), no sidebar. Theme: `PALETTE` in
+  `analysis/demo_data.py` mirrored by `.streamlit/config.toml` (light corporate
+  palette); the centered logo lives in `demo/assets/` (`st.image`).
 - `src/wildfire/geo/` — CCAA boundaries (`regions.py`: `load_boundaries` with
   `make_valid`, `assign_ccaa` — `within` join in EPSG:3035 + `sjoin_nearest`
   fallback ≤ `ccaa.nearest_max_distance_m`, keep-first dedupe, `REGION_NAME_MAP`

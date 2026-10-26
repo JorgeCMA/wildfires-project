@@ -1,8 +1,8 @@
 # Wildfire demo (Streamlit + Folium)
 
 Read-only viewer for the supervised occurrence model's deployment units
-(PLAN §Plan D), plus a **live** Plan-C point scorer. The browse tabs read the
-artifacts notebooks 01/04 already wrote; only the live scorer spends Open-Meteo
+(PLAN §Plan D), plus a **live** Plan-C point scorer. The browse sections read
+the artifacts notebooks 01/04 already wrote; only the live scorer spends Open-Meteo
 quota (one request per point you submit).
 
 ## Install & run
@@ -15,9 +15,10 @@ python scripts/fit_occurrence_model.py   # once: writes the Plan-C bundle
 streamlit run demo/app.py
 ```
 
-The app anchors all paths to `PROJECT_ROOT`, so it can be launched from any
-working directory. The browse tabs need these artifacts (regenerate by running
-the matching notebook):
+The app anchors data paths to `PROJECT_ROOT` and the logo to the app file, so
+it can be launched from any working directory; launch from the repo root so
+`.streamlit/config.toml` (the theme) also applies. The browse sections need these
+artifacts (regenerate by running the matching notebook):
 
 | Artifact | Notebook |
 |---|---|
@@ -34,19 +35,40 @@ written by `scripts/fit_occurrence_model.py` (see `docs/calibration-C.md`).
 
 If one is missing the app shows which artifact is absent instead of crashing.
 
-## Tabs
+## Theme and assets
 
-1. **Explorar mapa** — raw FIRMS detections over time (date-range + CCAA
+The demo uses the corporate palette, defined once in
+`src/wildfire/analysis/demo_data.py` (`PALETTE`) and mirrored in
+`.streamlit/config.toml` for Streamlit's own chrome (light mode: primary
+`#F65C2C`, background `#FFF9EA`, secondary `#FFF6E5`, black text). Charts and
+Folium layers read the same tokens; `RISK_BAND_COLORS` is the low→high ramp.
+
+- **Logo**: `demo/assets/wildfires_logo_1.png` (transparent PNG), centered at
+  the top of the main area with `st.image` (420 px wide).
+- The header (logo/title/description/badge) is centered; the five tabs split the
+  **full content width** evenly (side margins preserved), with larger type
+  (root 18 px, tabs 1.32 rem).
+- Streamlit reads `.streamlit/config.toml` from the **current working
+  directory**: launch from the repo root so the theme applies
+  (`streamlit run demo/app.py`).
+- Theme/contrast guard: `pytest tests/test_demo_theme.py`.
+
+## Sections (tabs)
+
+Five tabs sit between the static header (logo, title, description, pool badge)
+and the section content; there is no sidebar. Each section opens with a short
+bold description and holds its own controls at the top of its tab.
+
+1. **Explorar detecciones** — raw FIRMS detections over time (date-range + CCAA
    filters; cluster / heatmap toggle). No model.
-2. **Plan A — tramos** — relative risk-band distribution for a chosen protocol.
-3. **Plan B — tasa base** — empirical `P(≥1 detection | CCAA, day)` choropleth.
-4. **Plan C — excedencia** — reliability curves per margin (5/10/20 km) **and**
-   the live scorer: a clickable map to pick the point (a click fills the lat/lon
-   inputs), plus date + hour → Open-Meteo → bundled model → calibrated
-   `P(≥1 detection within R km that day)`.
-5. **Estado** — background-pool status + usage caveats.
+2. **Tramos de riesgo** — relative risk-band ranking for a chosen protocol, with
+   the mean score by CCAA (the equal-quintile distribution chart was removed).
+3. **Tasa base por CCAA** — empirical `P(≥1 detection | CCAA, day)` choropleth.
+4. **Excedencia calibrada** — the live scorer (clickable map, date/hour) **and**,
+   at the end, the reliability curves plus their table side by side (50/50).
+5. **Estado del modelo** — background-pool status + usage caveats.
 
-Guía completa en español de cada pestaña y control: `docs/guia-demo.md`.
+Guía completa en español de cada sección y control: `docs/guia-demo.md`.
 
 ## Background pool
 

@@ -1,6 +1,6 @@
 # Guía de la demo (Streamlit + Folium)
 
-Explicación completa de qué hace la demo, qué muestra cada pestaña, cada selector y cada vista.
+Explicación completa de qué hace la demo, qué muestra cada sección, cada selector y cada vista.
 
 - Entry point: `demo/app.py`
 - Extra opcional: `pip install -e ".[demo]"` (`streamlit`, `folium`, `streamlit-folium`)
@@ -16,7 +16,7 @@ Explicación completa de qué hace la demo, qué muestra cada pestaña, cada sel
 
 ## 0. Idea general en un párrafo
 
-La demo es **de solo lectura salvo por una acción**. Cuatro de las cinco pestañas
+La demo es **de solo lectura salvo por una acción**. Cuatro de las cinco secciones
 se limitan a mostrar artefactos ya escritos (CSV/GeoJSON) por los notebooks 01/04
 y por `scripts/fit_occurrence_model.py`; lo único que calcula algo al pulsar un
 botón es el **scorer en vivo de Plan C**. Nada de lo que hay en el mapa es salida
@@ -28,63 +28,75 @@ están calculadas sobre el **pool de fondo completo** (congelado el 2026‑10‑
 
 | Artefacto | Alimenta |
 |---|---|
-| `expanded/firms_spain_final_lags_index.csv` (23.142 detecciones, 2023‑01‑01 → 2024‑12‑31, 17 CCAA) | Opciones de fecha/CCAA de la barra lateral, **Explorar mapa** |
-| `predictions/occurrence_scores.csv` (138.852 filas = 2 protocolos × 69.426) | **Plan A** |
-| `predictions/ccaa_day_fire_rates.csv` (17 CCAA + `ALL`) | **Plan B** (tabla + coropleta) |
-| `raw/ccaa/spain-communities.geojson` | Geometría de Plan B |
-| `predictions/calibration_reliability.csv` (3 márgenes × 10 bins) | Curvas de **Plan C** |
-| `predictions/occurrence_fold_metrics.csv` (125 filas) | **Estado** |
-| `models/occurrence_bundle.joblib` | **Scorer en vivo de Plan C** (vía `scripts/fit_occurrence_model.py`) |
+| `expanded/firms_spain_final_lags_index.csv` (23.142 detecciones, 2023‑01‑01 → 2024‑12‑31, 17 CCAA) | Controles de fecha/CCAA de la pestaña **Explorar detecciones** |
+| `predictions/occurrence_scores.csv` (138.852 filas = 2 protocolos × 69.426) | **Tramos de riesgo** (Plan A) |
+| `predictions/ccaa_day_fire_rates.csv` (17 CCAA + `ALL`) | **Tasa base por CCAA** (Plan B) (tabla + coropleta) |
+| `raw/ccaa/spain-communities.geojson` | Geometría de **Tasa base por CCAA** |
+| `predictions/calibration_reliability.csv` (3 márgenes × 10 bins) | Curvas de **Excedencia calibrada** (Plan C) |
+| `predictions/occurrence_fold_metrics.csv` (125 filas) | **Estado del modelo** |
+| `models/occurrence_bundle.joblib` | **Scorer en vivo** de **Excedencia calibrada** (vía `scripts/fit_occurrence_model.py`) |
 
 Si falta un fichero, el cargador lanza `FileNotFoundError` y `_safe(...)` muestra
-un mensaje rojo *"Falta un artefacto…"* indicando qué notebook hay que ejecutar,
-en lugar de un traceback.
+un mensaje rojo *"No se encontró un artefacto requerido…"* indicando qué notebook
+hay que ejecutar (con el detalle técnico en un desplegable), en lugar de un
+traceback.
 
 ---
 
 ## 1. Estructura de la página
 
-- **Título**: *"Wildfire occurrence — demo (Plan D)"*.
-- **Banner** (siempre visible): *"Fondo de negativos completo. N filas de fondo
-  (ratio objetivo ≥ 2)…"*. La `N` sale en vivo de
-  `pool_status()['pool_rows']` (hoy 97.630) y el pool está congelado desde el
-  2026‑10‑25.
-- **Layout**: ancho (`layout="wide"`), barra lateral a la izquierda y 5 pestañas
-  arriba.
+- **Logo**: `demo/assets/wildfires_logo_1.png` (PNG transparente) centrado en la
+  parte superior del área principal, vía `st.image` (420 px de ancho; sin
+  favicon).
+- **Título**: *"Riesgo de incendio — priorización operativa"*.
+- **Subtítulo**: *"Ranking de ocurrencia y excedencia a partir de detecciones
+  FIRMS, clima y cobertura del suelo."*
+- **Chip de estado** (siempre visible): *"Pool de fondo congelado · N negativos ·
+  25‑10‑2026"*. La `N` sale en vivo de `pool_status()['pool_rows']` (hoy 97.630).
+- **Tema**: modo claro con la paleta corporativa
+  (`.streamlit/config.toml` + `PALETTE` en `analysis/demo_data.py`): fondo
+  `#FFF9EA`, primario interactivo `#F65C2C`, acento `#FFC074` (fondo del botón
+  principal), texto negro.
+- **Layout**: ancho (`layout="wide"`), sin barra lateral. La cabecera fija (logo,
+  título, descripción y chip de estado) está centrada arriba; debajo, 5 pestañas
+  horizontales ocupan todo el ancho disponible del contenido (de lado a lado, con
+  el margen lateral habitual) y separan esa cabecera del contenido.
+- **Tipografía**: base 18 px; títulos y pestañas ampliados (pestañas ~23,8 px,
+  en negrita, cada una ocupando 1/5 del ancho disponible).
 
 ---
 
-## 2. Barra lateral — "Controles"
+## 2. Pestañas y controles por sección
 
-Hay cuatro controles y cada uno afecta a una **pestaña concreta**:
+No hay barra lateral: las cinco pestañas (`Explorar detecciones`,
+`Tramos de riesgo`, `Tasa base por CCAA`, `Excedencia calibrada`,
+`Estado del modelo`) están entre la cabecera fija y el contenido. Cada pestaña
+abre con una **descripción breve en negrita** y, al principio de su contenido,
+los controles que le corresponden (las demás pestañas no muestran esos campos):
 
-1. **`Protocolo de validación`** — radio: `season` / `ccaa`.
-   Elige qué protocolo de validación bloqueada (*leave-one-group-out*) se muestra
-   en **Plan A**. Los dos protocolos son particiones por trimestre-año vs. por
-   comunidad; como las puntuaciones de pliegues distintos no comparten escala, los
-   tramos se calculan *dentro* de cada protocolo. Hoy: 69.426 filas puntuadas por
-   protocolo.
+- **Explorar detecciones** → `Rango de fechas` (por defecto el span completo
+  2023‑01‑01 → 2024‑12‑31; mín/máx salen de los datos) y `Comunidades autónomas`
+  (17 CCAA; vacío = todas; el placeholder muestra «Ninguna» y no hay opción de
+  «seleccionar todo»). Si seleccionas una sola fecha se ignora: el código solo
+  aplica el rango cuando hay dos extremos.
+- **Tramos de riesgo** → `Protocolo de validación` (`Temporada` / `Comunidad
+  autónoma`; internamente `season` / `ccaa`). Elige qué
+  protocolo de validación bloqueada (*leave-one-group-out*) se muestra; los
+  tramos se calculan *dentro* de cada protocolo. Hoy: 69.426 filas puntuadas por
+  protocolo.
+- **Tasa base por CCAA**, **Excedencia calibrada** y **Estado del modelo** → sin
+  parámetros (en excedencia el punto, la fecha y el margen se eligen en el
+  formulario de la propia pestaña).
 
-2. **`Mapa (detecciones)` → `Rango de fechas`** — rango de fechas (por defecto el
-   span completo 2023‑01‑01 → 2024‑12‑31; mín/máx salen de los datos).
-   Filtra la capa de puntos de **Explorar mapa**. (Si seleccionas una sola fecha
-   se ignora: el código solo aplica el rango cuando hay dos extremos.)
-
-3. **`Comunidades`** — multiselección de las 17 CCAA (por defecto vacío = todas).
-   También filtra solo la capa de **Explorar mapa**.
-
-4. Un `caption` que recuerda que el cálculo en vivo está en **Plan C**.
-
-Ojo: los dos filtros del mapa **no** afectan a Plan A/B/C, y el radio de protocolo
-no afecta a B/C.
+Los filtros del mapa **no** afectan a A/B/C; el protocolo no afecta a B/C.
 
 ---
 
-## 3. **Explorar mapa** — detecciones crudas en el tiempo
+## 3. **Explorar detecciones** — detecciones crudas en el tiempo
 
 Objetivo: *dónde y cuándo hubo detecciones*, sin modelo.
 
-- Aplica los filtros de fecha y CCAA de la barra lateral y muestra:
+- Aplica los filtros de fecha y CCAA del inicio de la pestaña y muestra:
   - **Radio `Capa`** — `Clúster` o `Mapa de calor`. Los mismos puntos, dos
     renderizados:
     - `Clúster` (`FastMarkerCluster`): los puntos se agrupan en burbujas con
@@ -94,7 +106,8 @@ Objetivo: *dónde y cuándo hubo detecciones*, sin modelo.
       `glyphicon-home`. El callback debe ser la *expresión* de la función
       (Folium lo envuelve en `var callback = …;`); incluir `var callback =`
       dentro del string rompe el script del mapa.
-    - `Mapa de calor` (`HeatMap`, radio 6, blur 8): solo el gradiente, sin iconos.
+    - `Mapa de calor` (`HeatMap`, radio 6, blur 8): solo el gradiente
+      ámbar→rojo de la paleta, sin iconos.
   - Un `caption`: *"N detecciones mostradas."* (el recuento filtrado).
   - Un **mapa Folium** sobre España (tiles OpenStreetMap, zoom 6).
   - Debajo, un **gráfico de barras mensual** (`st.bar_chart`) de detecciones por
@@ -105,34 +118,35 @@ simplemente el registro FIRMS.
 
 ---
 
-## 4. **Plan A — tramos de riesgo relativos**
+## 4. **Tramos de riesgo** — tramos de riesgo relativo
 
 Objetivo: el **ranking** del modelo, troceado en tramos de triaje relativos.
 
-- Un `caption` fija la advertencia clave: los tramos son **relativos al lote
-  puntuado**, no una escala absoluta de peligro; modelo base: logístico.
-- **Gráfico de barras** `Distribución por tramo (relativo)`: recuento de filas
-  puntuadas por tramo, coloreado de verde a rojo con `RISK_BAND_COLORS`. Como los
-  tramos son **quintiles por protocolo**, con 69.426 filas las barras salen
-  ~iguales por construcción (13.885 en cuatro tramos y 13.886 en *Muy alto*). El
-  gráfico sobre todo confirma el troceado, no la habilidad.
-- **Tabla** `score_medio` por CCAA: puntuación media por región, descendente. Aquí
-  es donde Plan A dice algo útil: qué regiones rankean más alto **bajo el
-  protocolo actual**.
+- Una **descripción breve** al inicio de la pestaña recuerda qué se ve y que los
+  tramos son relativos.
+- **Selector `Protocolo de validación`** (`Temporada` / `Comunidad autónoma`;
+  internamente `season` / `ccaa`).
+- **Tabla `Puntuación media` por CCAA**: puntuación media por región, descendente,
+  con los nombres y las cifras alineados a la derecha. Aquí es donde la pestaña
+  dice algo útil: qué regiones rankean más alto **bajo el protocolo actual**.
+- El antiguo gráfico `Distribución por tramo` se retiró: al ser **quintiles por
+  protocolo**, con 69.426 filas los cinco tramos salen casi iguales por
+  construcción (13.885 / 13.886), así que no añadía información.
 
 Columnas detrás: `record_id, label, score, protocol, held_out, risk_band,
 risk_percentile, ccaa, ccaa_fire_rate`.
 
-### 4.1. Qué cambia al pasar de `season` a `ccaa`
+### 4.1. Qué cambia al pasar de `Temporada` a `Comunidad autónoma`
 
-Las dos opciones usan **las mismas 69.426 filas puntuadas y las mismas columnas**;
-lo único que cambia son las predicciones *out-of-fold* según **cómo se bloquea la
-validación**:
+En la UI son `Temporada` (internamente `season`) y `Comunidad autónoma`
+(internamente `ccaa`). Las dos opciones usan **las mismas 69.426 filas puntuadas y
+las mismas columnas**; lo único que cambia son las predicciones *out-of-fold*
+según **cómo se bloquea la validación**:
 
 | Protocolo | Bloqueo (*leave-one-group-out*) | Pliegues (`held_out`) | Qué prueba |
 |---|---|---|---|
-| `season` | por **trimestre-año** | `2023-Q1 … 2024-Q4` (8) | generalizar **en el tiempo**, con las mismas regiones en entrenamiento |
-| `ccaa` | por **comunidad** | las 17 CCAA (una por pliegue) | generalizar a una **región no vista** en entrenamiento |
+| `Temporada` (`season`) | por **trimestre-año** | `2023-Q1 … 2024-Q4` (8) | generalizar **en el tiempo**, con las mismas regiones en entrenamiento |
+| `Comunidad autónoma` (`ccaa`) | por **comunidad** | las 17 CCAA (una por pliegue) | generalizar a una **región no vista** en entrenamiento |
 
 Dicho con precisión, qué queda **fuera** y qué **dentro** en **cada pliegue
 individual** (no en el conjunto de todos los pliegues):
@@ -183,21 +197,23 @@ features no regionales: las predicciones (y con ellas el ranking) se mueven.
 **Advertencia de lectura**: ninguno de los dos protocolos es "la verdad". El orden
 de regiones **depende del protocolo**, así que el `score_medio` de Plan A debe
 leerse como *"bajo este protocolo"*, nunca como un ranking absoluto de peligro
-(que es justo lo que dice el `caption` de la pestaña).
+(que es justo lo que dice el `caption` de la sección).
 
 ---
 
-## 5. **Plan B — tasa base empírica CCAA × día**
+## 5. **Tasa base por CCAA** — tasa base empírica CCAA × día
 
 Objetivo: la tasa base de evento raro **medida y sin modelo**.
 
-- `caption`: `P(≥1 detección en la CCAA ese día)`.
-- **Coropleta** (`folium.Choropleth`, `YlOrRd`): cada CCAA sombreada por
-  `fire_rate`, con clave `feature.properties.ccaa_es`. Se excluye la fila agregada
-  `ALL`; las regiones sin tasa (Ceuta/Melilla, o nombres no mapeados) salen en gris
-  (`nan_fill_color`). La geometría se limpia (`_to_multipolygon`) para que la
+- `caption`: `P(≥1 detección | CCAA, día)` sobre 731 días (2023–2024), sin modelo.
+- **Coropleta** (`folium.GeoJson` + `branca.LinearColormap`): cada CCAA sombreada
+  por `fire_rate` con la rampa corporativa (ámbar claro → rojo oscuro), leyenda
+  en porcentaje y tooltip con CCAA y tasa. Se excluye la fila agregada `ALL`; las
+  regiones sin tasa (Ceuta/Melilla, o nombres no mapeados) llevan el color neutro
+  `PALETTE["grid"]`. La geometría se limpia (`_to_multipolygon`) para que la
   geometría insular no rompa los límites de Folium.
-- **Tabla**: las 18 filas, con `fire_rate` en porcentaje.
+- **Tabla**: 18 filas; columnas `Comunidad autónoma`, `Rango de días`,
+  `Días con detecciones` y `Ratio de fuego` (esta última con `%`).
 
 `fire_rate` = (nº de días con ≥1 detección en esa CCAA) ÷ (nº de días del span
 2023‑01‑01→2024‑12‑31, 731). Instantáneas: Andalucía ≈ 66,8 %, Castilla‑La Mancha
@@ -207,22 +223,12 @@ y sin cuota.
 
 ---
 
-## 6. **Plan C — excedencia**
+## 6. **Excedencia calibrada**
 
-Dos secciones apiladas.
+El scorer en vivo va primero; al final, las curvas de fiabilidad y su tabla
+comparten fila al 50%.
 
-### 6a. Curvas de fiabilidad (precalculadas)
-
-- `Fiabilidad por margen`: probabilidad predicha (x) vs frecuencia observada (y)
-  por margen, una línea por `margin_km` ∈ {5, 10, 20}, más la diagonal ideal.
-  Datos = `calibration_reliability.csv` (10 bins por cuantiles × 3 márgenes).
-- **Tabla** de esas mismas 30 filas: `bin_lower, bin_upper, mean_predicted,
-  observed_freq, n, margin_km`.
-- El `caption` recuerda que es una probabilidad de **margen ancho** (no puntual):
-  calibración isotónica entrenada en 2023, calibrada en 2024, corregida por la
-  tasa base medida.
-
-### 6b. `Scorer en vivo — un punto, una fecha` (la única acción en vivo)
+### 6a. `Puntuar un punto y una fecha` (la única acción en vivo)
 
 **Mapa selector (clic).** Lo primero es un mapa Folium con un marcador en el punto
 activo: al **hacer clic** en cualquier parte del mapa, esa coordenada pasa a los
@@ -259,15 +265,27 @@ Salidas mostradas (el punto sigue marcado en el mapa de arriba):
 
 - Una **métrica**: `P(≥1 detección a ≤ R km ese día)` para el margen elegido, en %.
 - Un `caption` con el **score bruto del modelo**.
-- Una **tabla de 3 filas** (`margen_km`, `probabilidad` %) para ver los tres
-  márgenes, no solo el elegido.
+- Una **tabla de 3 filas** (`Kilómetros a la redonda`, `Probabilidad` %) para ver
+  los tres márgenes, no solo el elegido.
 
 Cualquier fallo (red, tile CLC ausente, contrato de features) se captura y se
 muestra como mensaje rojo en lugar de tumbar la app.
 
+### 6b. Fiabilidad por margen (gráfico + tabla, 50/50)
+
+- `Fiabilidad por margen`: probabilidad predicha (x) vs frecuencia observada (y)
+  por margen, una línea por `margin_km` ∈ {5, 10, 20} (de ámbar a rojo oscuro),
+  más la diagonal ideal en gris cálido.
+  Datos = `calibration_reliability.csv` (10 bins por cuantiles × 3 márgenes).
+- **Tabla** de esas mismas 30 filas: `bin_lower, bin_upper, mean_predicted,
+  observed_freq, n, margin_km`, a la derecha del gráfico.
+- El texto recuerda que la probabilidad es de **margen ancho** (no puntual) y que
+  la calibración es isotónica, ajustada en 2023 y calibrada en 2024, con
+  corrección de prior.
+
 ---
 
-## 7. **Estado** — panel del fondo
+## 7. **Estado del modelo** — estado del modelo y notas de uso
 
 Tres elementos:
 
@@ -300,7 +318,7 @@ Tres elementos:
 
 ---
 
-## 8. Qué entrenamiento hay detrás de cada pestaña
+## 8. Qué entrenamiento hay detrás de cada sección
 
 **La demo no entrena nada al usarse**: `demo/app.py` no contiene ninguna llamada a
 `.fit()` (ni al arrancar ni al pulsar botones). Todo el entrenamiento ocurrió antes,
@@ -309,12 +327,12 @@ artefactos y, como mucho, **aplica** un modelo ya entrenado.
 
 | Sección | ¿Entrena? | Qué hay detrás | Dónde se entrenó |
 |---|---|---|---|
-| **Explorar mapa** | No | Nada: detecciones FIRMS crudas con filtros de fecha/CCAA | — |
-| **Plan A — tramos** | No en la app (sí aguas arriba) | Un **logístico por pliegue** de la validación bloqueada (8 `season` / 17 `ccaa`); puntuaciones **out-of-fold**; los tramos son quintiles de esas puntuaciones, por protocolo | `notebooks/04` |
-| **Plan B — tasa base** | **No** (ni aquí ni aguas arriba) | Frecuencia empírica `días con ≥1 detección / días del span`; sin modelo | `notebooks/04` (solo conteo) |
-| **Plan C — curvas** | No en la app (sí aguas arriba) | HGB entrenado en **2023** + **isotónica por margen** ajustada en **2024** (cross-fit por bloques de días) + corrección de prior | `notebooks/04` §8 |
-| **Plan C — scorer en vivo** | **No** | Inferencia pura con el bundle: preprocesado + HGB(2023) + isotónicas(2024) | `scripts/fit_occurrence_model.py` |
-| **Estado** | **No** | Recuentos del pool y métricas ya calculadas de la CV | `notebooks/04` y `scripts/background_pool_status.py` |
+| **Explorar detecciones** | No | Nada: detecciones FIRMS crudas con filtros de fecha/CCAA | — |
+| **Tramos de riesgo** (Plan A) | No en la app (sí aguas arriba) | Un **logístico por pliegue** de la validación bloqueada (8 `season` / 17 `ccaa`); puntuaciones **out-of-fold**; los tramos son quintiles de esas puntuaciones, por protocolo | `notebooks/04` |
+| **Tasa base por CCAA** (Plan B) | **No** (ni aquí ni aguas arriba) | Frecuencia empírica `días con ≥1 detección / días del span`; sin modelo | `notebooks/04` (solo conteo) |
+| **Excedencia calibrada** — curvas (Plan C) | No en la app (sí aguas arriba) | HGB entrenado en **2023** + **isotónica por margen** ajustada en **2024** (cross-fit por bloques de días) + corrección de prior | `notebooks/04` §8 |
+| **Excedencia calibrada** — scorer en vivo (Plan C) | **No** | Inferencia pura con el bundle: preprocesado + HGB(2023) + isotónicas(2024) | `scripts/fit_occurrence_model.py` |
+| **Estado del modelo** | **No** | Recuentos del pool y métricas ya calculadas de la CV | `notebooks/04` y `scripts/background_pool_status.py` |
 
 ### 8.1. Plan A — un modelo por pliegue (evaluación, no despliegue)
 
@@ -390,7 +408,7 @@ La curva que ves (`mean_predicted` vs `observed_freq`) evalúa las predicciones
 - Para regenerarlo: `python scripts/fit_occurrence_model.py` (artefacto
   versionado y reproducible).
 
-### 8.5. Estado — lectura de resultados ya calculados
+### 8.5. Estado del modelo — lectura de resultados ya calculados
 
 - No entrena: lee los recuentos del parcial de clima y del pool (`pool_status`) y
   el CSV de métricas por pliegue.
@@ -408,7 +426,7 @@ La curva que ves (`mean_predicted` vs `observed_freq`) evalúa las predicciones
 | Plan B | ninguno | estadística descriptiva |
 | Scorer en vivo | ninguno (modelo congelado) | inferencia |
 
-Ninguna pestaña usa un split aleatorio.
+Ninguna sección usa un split aleatorio.
 
 ---
 
@@ -443,12 +461,14 @@ Ninguna pestaña usa un split aleatorio.
 
 ## 11. Usarla en 30 segundos
 
-1. Barra lateral: elige protocolo + rango de fechas + regiones.
-2. **Explorar mapa**: alterna Clúster / Mapa de calor; mira las barras mensuales.
-3. **Plan A**: lee la tabla de score medio por CCAA.
-4. **Plan B**: lee la coropleta de tasa base (Andalucía/CLM/Extremadura arriba).
-5. **Plan C**: mira las curvas de fiabilidad y luego introduce un punto/fecha/hora y
-   pulsa **Calcular excedencia** para obtener la excedencia calibrada en los tres
-   márgenes (gasta una petición a Open-Meteo).
-6. **Estado**: confirma el `VERDICT: READY` (pool congelado) e inspecciona el
-   PR‑AUC por pliegue.
+1. Elige una pestaña; sus controles aparecen al inicio del contenido.
+2. **Explorar detecciones**: alterna Clúster / Mapa de calor; mira las barras
+   mensuales.
+3. **Tramos de riesgo**: lee la tabla de score medio por CCAA.
+4. **Tasa base por CCAA**: lee la coropleta (Andalucía/CLM/Extremadura arriba).
+5. **Excedencia calibrada**: introduce un punto/fecha/hora y pulsa **Calcular
+   excedencia** para obtener la excedencia calibrada en los tres márgenes (gasta
+   una petición a Open-Meteo); al final, revisa las curvas de fiabilidad y su
+   tabla.
+6. **Estado del modelo**: confirma el `VERDICT: READY` (pool congelado) e
+   inspecciona el PR‑AUC por pliegue.

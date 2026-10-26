@@ -29,6 +29,7 @@ from .calibration import (
     reliability_curve,
 )
 from .demo_data import (
+    PALETTE,
     RISK_BAND_COLORS,
     band_counts,
     ccaa_base_rate_geojson,
@@ -85,6 +86,7 @@ __all__ = [
     "DEFAULT_MARGIN",
     "DEFAULT_N_BOOT",
     "EXCEEDANCE_MARGINS_KM",
+    "PALETTE",
     "RISK_BAND_COLORS",
     "RISK_BAND_LABELS",
     "MarginCalibration",

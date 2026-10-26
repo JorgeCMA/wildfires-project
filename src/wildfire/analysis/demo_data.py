@@ -28,13 +28,28 @@ FOLD_METRICS_CSV = "data/processed/predictions/occurrence_fold_metrics.csv"
 #: Columns needed for the raw time map (keeps the 23k-row read light).
 DETECTION_COLUMNS = ["detection_id", "latitude", "longitude", "acq_date", "ccaa"]
 
-#: Ordered 5-band palette (matches ``deployment.RISK_BAND_LABELS[5]``), green→red.
+#: Corporate palette (single source of truth for charts/maps). The Streamlit
+#: theme in ``.streamlit/config.toml`` mirrors these values.
+PALETTE: dict[str, str] = {
+    "bg": "#FFF9EA",
+    "secondary_bg": "#FFF6E5",
+    "text": "#000000",
+    "muted": "#5A4A35",
+    "primary": "#F65C2C",
+    "accent": "#FFC074",
+    "gold": "#FDAA15",
+    "deep": "#B3261E",
+    "link": "#B8401B",
+    "grid": "#EADFC8",
+}
+
+#: Ordered 5-band palette (matches ``deployment.RISK_BAND_LABELS[5]``), low→high.
 RISK_BAND_COLORS: dict[str, str] = {
-    "Muy bajo": "#2c7bb6",
-    "Bajo": "#abd9e9",
-    "Medio": "#ffffbf",
-    "Alto": "#fdae61",
-    "Muy alto": "#d7191c",
+    "Muy bajo": "#FFF0CF",
+    "Bajo": PALETTE["accent"],
+    "Medio": PALETTE["gold"],
+    "Alto": PALETTE["primary"],
+    "Muy alto": PALETTE["deep"],
 }
 
 
@@ -142,6 +157,7 @@ __all__ = [
     "DETECTION_COLUMNS",
     "FOLD_METRICS_CSV",
     "OCCURRENCE_SCORES_CSV",
+    "PALETTE",
     "RISK_BAND_COLORS",
     "band_counts",
     "ccaa_base_rate_geojson",

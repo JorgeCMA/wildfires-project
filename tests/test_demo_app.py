@@ -35,6 +35,28 @@ def test_plan_c_map_click_updates_coordinates(monkeypatch):
     assert values["Longitud"] == pytest.approx(2.5678)
 
 
+def test_controls_live_in_the_main_area_without_a_sidebar():
+    """The old sidebar is gone; section controls render inside the tabs."""
+    at = AppTest.from_file(str(APP_PATH), default_timeout=180).run()
+    assert not at.exception
+    assert not at.sidebar.button
+    assert not at.sidebar.date_input
+    assert not at.sidebar.multiselect
+    assert any(widget.label == "Rango de fechas" for widget in at.date_input)
+    assert any(widget.label == "Protocolo de validación" for widget in at.radio)
+
+
+def test_tab_labels_are_descriptive():
+    at = AppTest.from_file(str(APP_PATH), default_timeout=180).run()
+    assert [tab.label for tab in at.tabs] == [
+        "Explorar detecciones",
+        "Tramos de riesgo",
+        "Tasa base por CCAA",
+        "Excedencia calibrada",
+        "Estado del modelo",
+    ]
+
+
 def test_fire_marker_callback_is_a_function_expression():
     """Folium wraps the callback as `var callback = {callback};`.
 
